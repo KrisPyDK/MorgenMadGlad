@@ -230,7 +230,13 @@ async function save(request) {
   try {
     const response = await fetch(config.apiUrl, {
       method: 'POST',
-      body: JSON.stringify({ action: request.type, name: request.name, date: request.date, reason: request.reason }),
+      body: JSON.stringify({
+        action: request.type,
+        name: request.name,
+        other: request.other,
+        date: request.date,
+        reason: request.reason,
+      }),
     });
     const body = await response.json();
     if (body.data) setData(normalizeData(body.data, state.today));
@@ -268,6 +274,7 @@ const ISSUES = {
   leave: (r) => ['afmeld.yml', `👋 Afmeld: ${r.name}`, { navn: r.name }, `Afmelder ${r.name}…`],
   cancel: (r) => ['aflys.yml', `😴 Aflys: ${r.date}`, { fredag: r.date, grund: r.reason }, `Aflyser ${longDate(r.date)}…`],
   reopen: (r) => ['genaabn.yml', `🎉 Genåbn: ${r.date}`, { fredag: r.date }, `Genåbner ${longDate(r.date)}…`],
+  swap: (r) => ['byt.yml', `🔁 Byt: ${r.name} ⇄ ${r.other}`, { navn: r.name, med: r.other }, `Bytter ${r.name} og ${r.other}…`],
 };
 
 function issueUrl(template, title, fields = {}) {
@@ -324,11 +331,16 @@ function render() {
   renderNext(entries, next);
   renderPlan(entries, next);
   renderTeam();
+  renderSwaps();
   renderHistory();
   state.firstRender = false;
 }
 
 function renderNext(entries, next) {
+  const order = $('#order-link');
+  order.hidden = !config.orderUrl;
+  if (config.orderUrl) order.href = config.orderUrl;
+
   const eyebrow = $('#next-eyebrow');
   const name = $('#next-name');
   const date = $('#next-date');
@@ -389,11 +401,18 @@ function renderPlan(entries, next) {
     return;
   }
 
+  const dates = nextDates(state.data, state.today);
+  const canSwap = state.data.participants.length > 1;
+  const highlight = state.highlight ?? new Set();
+  state.highlight = null;
+
   list.replaceChildren(
     ...entries.map((entry, i) => {
       const isNext = entry === next;
       const isToday = entry.date === state.today;
-      const classes = ['friday', isNext && 'is-next', entry.cancelled && 'is-cancelled'].filter(Boolean).join(' ');
+      const classes = ['friday', isNext && 'is-next', entry.cancelled && 'is-cancelled', highlight.has(entry.date) && 'is-swapped']
+        .filter(Boolean)
+        .join(' ');
       const dateBox = h(
         'div',
         { class: 'friday__date', 'aria-hidden': 'true' },
@@ -418,7 +437,14 @@ function renderPlan(entries, next) {
           isToday ? h('span', { class: 'tag tag--today' }, 'I dag') : isNext ? h('span', { class: 'tag' }, 'Næste') : null,
         );
         meta = `Uge ${isoWeek(entry.date)} · ${relativeDays(entry.date)}`;
-        action = h('button', { class: 'chip-btn', type: 'button', onclick: () => openCancel(entry) }, 'Aflys');
+        // Man bytter sin næste tur, så knappen sidder kun på den.
+        const swappable = canSwap && dates.get(entry.person.name) === entry.date;
+        action = [
+          swappable
+            ? h('button', { class: 'chip-btn chip-btn--swap', type: 'button', onclick: () => openSwap(entry) }, 'Byt')
+            : null,
+          h('button', { class: 'chip-btn', type: 'button', onclick: () => openCancel(entry) }, 'Aflys'),
+        ];
       } else {
         who = h('div', { class: 'friday__who' }, h('strong', {}, 'Ledig'));
         meta = `Uge ${isoWeek(entry.date)}`;
@@ -434,7 +460,7 @@ function renderPlan(entries, next) {
         },
         dateBox,
         h('div', { class: 'friday__main' }, who, h('span', { class: 'friday__meta' }, meta)),
-        action,
+        h('div', { class: 'friday__actions' }, action),
       );
     }),
   );
@@ -475,6 +501,43 @@ function renderTeam() {
             onclick: () => leave(person),
           },
           '×',
+        ),
+      ),
+    ),
+  );
+}
+
+function renderSwaps() {
+  const swaps = [...state.data.swaps].reverse().slice(0, 10);
+  const list = $('#swaps');
+  if (!swaps.length) {
+    list.replaceChildren(h('li', { class: 'muted' }, 'Ingen har byttet endnu. Brug "Byt" i fredagsplanen.'));
+    return;
+  }
+  list.replaceChildren(
+    ...swaps.map((swap, i) =>
+      h(
+        'li',
+        { class: 'swap-entry', vars: { '--i': i, '--base-delay': state.firstRender ? '1.35s' : '0s' } },
+        h(
+          'div',
+          { class: 'swap-entry__who' },
+          avatar(swap.a),
+          h('strong', {}, swap.a),
+          h('span', { class: 'swap-entry__arrow', 'aria-label': 'byttede med' }, '⇄'),
+          avatar(swap.b),
+          h('strong', {}, swap.b),
+        ),
+        h(
+          'span',
+          { class: 'swap-entry__meta' },
+          [
+            swap.bFrom && `${swap.a} tager ${shortDate(swap.bFrom)}`,
+            swap.aFrom && `${swap.b} tager ${shortDate(swap.aFrom)}`,
+            `byttet ${shortDate(swap.date)}`,
+          ]
+            .filter(Boolean)
+            .join(' · '),
         ),
       ),
     ),
@@ -597,6 +660,74 @@ async function confirmCancel(event) {
   const request = { type: 'cancel', date: cancelEntry.date, reason: $('#cancel-reason').value.trim() };
   closeDialog($('#cancel-dialog'));
   report(await perform(request));
+}
+
+let swapEntry = null;
+let swapWith = null;
+
+function openSwap(entry) {
+  swapEntry = entry;
+  swapWith = null;
+  const me = entry.person.name;
+  const dates = nextDates(state.data, state.today);
+  const others = state.data.participants
+    .filter((p) => p.name !== me && dates.has(p.name))
+    .sort((a, b) => dates.get(a.name).localeCompare(dates.get(b.name)));
+
+  $('#swap-title').textContent = `Byt ${/[sxz]$/i.test(me) ? `${me}'` : `${me}s`} fredag`;
+  $('#swap-intro').replaceChildren(h('b', {}, me), ` har ${longDate(entry.date)}. Hvem vil bytte?`);
+  $('#swap-effect').hidden = true;
+  $('#swap-ok').disabled = true;
+  $('#swap-list').replaceChildren(
+    ...others.map((person, i) => {
+      const button = h(
+        'button',
+        {
+          class: 'swap-option',
+          type: 'button',
+          role: 'radio',
+          'aria-checked': 'false',
+          vars: { '--i': i },
+        },
+        avatar(person.name),
+        h('span', { class: 'swap-option__name' }, person.name),
+        h('span', { class: 'swap-option__date' }, shortDate(dates.get(person.name))),
+      );
+      button.addEventListener('click', () => pickSwap(button, person, dates.get(person.name)));
+      return button;
+    }),
+  );
+  openDialog($('#swap-dialog'));
+}
+
+function pickSwap(button, person, date) {
+  swapWith = person;
+  for (const option of document.querySelectorAll('.swap-option')) {
+    const selected = option === button;
+    option.classList.toggle('is-selected', selected);
+    option.setAttribute('aria-checked', String(selected));
+  }
+  const effect = $('#swap-effect');
+  effect.replaceChildren(
+    h('b', {}, swapEntry.person.name),
+    ` tager ${longDate(date)}, og `,
+    h('b', {}, person.name),
+    ` tager ${longDate(swapEntry.date)}.`,
+  );
+  effect.hidden = false;
+  $('#swap-ok').disabled = false;
+}
+
+async function confirmSwap(event) {
+  event.preventDefault();
+  if (!swapEntry || !swapWith) return;
+  const request = { type: 'swap', name: swapEntry.person.name, other: swapWith.name };
+  const theirDate = nextDates(state.data, state.today).get(swapWith.name);
+  state.highlight = new Set([swapEntry.date, theirDate]);
+  closeDialog($('#swap-dialog'));
+  const error = await perform(request);
+  if (error) report(error);
+  else if (state.mode === 'sheet') celebrate();
 }
 
 /* ---------- Dialoger ---------- */
@@ -825,6 +956,7 @@ function init() {
     });
   }
 
+  $('#swap-form').addEventListener('submit', confirmSwap);
   $('#confirm-form').addEventListener('submit', (event) => {
     event.preventDefault();
     answerConfirm(true);

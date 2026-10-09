@@ -10,6 +10,8 @@
  */
 export const config = {
   apiUrl: '',
+  // Knappen "Bestil morgenbrød" fører hertil. Tom = ingen knap.
+  orderUrl: 'https://shop.foodandco.dk/terma-lystrup/varesortiment',
   repo: 'KrisPyDK/MorgenMadGlad',
   weeksAhead: 8,
   historyCount: 12,

@@ -120,6 +120,9 @@
           <span class="oven__label" id="oven-label"></span>
         </div>
         <p class="next__note" id="next-note" hidden></p>
+        <a class="btn btn--order" id="order-link" href="#" target="_blank" rel="noopener" hidden>
+          <span class="btn--order__icon" aria-hidden="true">🛒</span> Bestil morgenbrød
+        </a>
       </div>
     </section>
 
@@ -154,12 +157,21 @@
           <ul class="team__list" id="team"></ul>
         </section>
 
+        <section class="card swaps" aria-labelledby="swaps-title">
+          <div class="card__head card__head--row">
+            <h2 id="swaps-title">Byttelog</h2>
+            <span class="count swaps__badge" aria-hidden="true">⇄</span>
+          </div>
+          <ol class="swaps__list" id="swaps"></ol>
+        </section>
+
         <section class="card how" aria-labelledby="how-title">
           <h2 id="how-title">Sådan virker det</h2>
           <ol class="how__steps">
             <li><svg aria-hidden="true"><use href="#p-croissant"/></svg><span><b>Tilmeld dig</b> – du kommer bagerst i rotationen.</span></li>
             <li><svg aria-hidden="true"><use href="#p-spandauer"/></svg><span><b>Hver fredag</b> tager den næste på listen morgenbrød med.</span></li>
             <li><svg aria-hidden="true"><use href="#p-kanelsnegl"/></svg><span><b>Ingen morgenmad?</b> Aflys fredagen – så rykker alle en uge.</span></li>
+            <li><svg aria-hidden="true"><use href="#p-rundstykke"/></svg><span><b>Kan du ikke?</b> Tryk "Byt" og byt fredag med en kollega.</span></li>
           </ol>
           <p class="muted small" id="how-note"></p>
         </section>
@@ -198,6 +210,23 @@
       <div class="dialog__actions">
         <button type="button" class="btn btn--soft" data-close>Fortryd</button>
         <button type="submit" class="btn btn--jam">Aflys fredagen</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog class="dialog" id="swap-dialog" aria-labelledby="swap-title">
+    <form class="dialog__form" id="swap-form">
+      <div class="swap-art" aria-hidden="true">
+        <svg class="swap-art__a"><use href="#p-croissant"/></svg>
+        <svg class="swap-art__b"><use href="#p-kanelsnegl"/></svg>
+      </div>
+      <h3 id="swap-title">Byt fredag</h3>
+      <p class="dialog__effect" id="swap-intro"></p>
+      <div class="swap-list" id="swap-list" role="radiogroup" aria-label="Byt med"></div>
+      <p class="dialog__effect swap-effect" id="swap-effect" hidden></p>
+      <div class="dialog__actions">
+        <button type="button" class="btn btn--soft" data-close>Fortryd</button>
+        <button type="submit" class="btn btn--jam" id="swap-ok" disabled>Byt</button>
       </div>
     </form>
   </dialog>

@@ -269,6 +269,7 @@ svg { display: block; }
 #plan { --delay: 1.05s; }
 #tilmeld { --delay: 1.15s; }
 .team { --delay: 1.25s; }
+.swaps { --delay: 1.3s; }
 .how { --delay: 1.35s; }
 .history { --delay: 1.45s; }
 
@@ -570,6 +571,23 @@ svg { display: block; }
 .chip-btn:hover { scale: 1.08; rotate: 3deg; border-color: var(--jam); }
 .chip-btn:active { scale: .92; }
 .chip-btn--reopen { background: var(--pistachio); border-color: var(--pistachio); color: #fff; }
+.chip-btn--swap { background: var(--butter-soft); }
+.chip-btn--swap:hover { rotate: -3deg; border-color: var(--crust); }
+
+.friday__actions { display: flex; gap: 6px; }
+.friday__actions:empty { display: none; }
+
+/* Fredage der lige er byttet, vender rundt som et pandekage-flip. */
+.friday.is-swapped { animation: swap-flip 1s var(--spring-strong) backwards, swap-glow 2.2s ease-out; }
+@keyframes swap-flip {
+  0% { transform: perspective(600px) rotateX(-180deg) scale(.8); opacity: 0; }
+  60% { transform: perspective(600px) rotateX(12deg) scale(1.03); opacity: 1; }
+  100% { transform: none; }
+}
+@keyframes swap-glow {
+  0%, 40% { box-shadow: 0 0 0 6px var(--pistachio), 0 4px 0 var(--line); }
+  100% { box-shadow: 0 0 0 0 transparent, 0 4px 0 var(--line); }
+}
 
 .empty {
   display: grid;
@@ -583,7 +601,7 @@ svg { display: block; }
 
 @media (max-width: 480px) {
   .friday { grid-template-columns: auto minmax(0, 1fr); }
-  .friday > .chip-btn { grid-column: 1 / -1; justify-self: end; margin-top: -6px; }
+  .friday > .friday__actions { grid-column: 1 / -1; justify-self: end; margin-top: -6px; }
   .friday__date { width: 54px; height: 58px; }
 }
 
@@ -844,3 +862,101 @@ svg { display: block; }
     transition-duration: .001ms !important;
   }
 }
+
+/* ---------- Bestil morgenbrød ---------- */
+
+.btn--order {
+  --btn-bg: var(--jam);
+  --btn-fg: #fff;
+  --btn-edge: var(--jam-dark);
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  text-decoration: none;
+  animation: nudge 6s ease-in-out 3s infinite;
+}
+.btn--order[hidden] { display: none; }
+.btn--order__icon { display: inline-block; font-size: 1.2em; transition: translate .4s var(--spring-strong); }
+.btn--order:hover .btn--order__icon { translate: 4px -3px; }
+@keyframes nudge {
+  0%, 86%, 100% { transform: none; }
+  89% { transform: scale(1.08) rotate(-4deg); }
+  92% { transform: scale(1.08) rotate(4deg); }
+  95% { transform: scale(1.04) rotate(-2deg); }
+}
+@media (max-width: 560px) {
+  .btn--order { justify-self: center; }
+}
+
+/* ---------- Byttelog ---------- */
+
+.swaps__badge { font-size: 1.1rem; }
+.swaps__list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.swap-entry {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--card-2);
+  border: 2px solid var(--line);
+  animation: pop-in .6s var(--spring) backwards;
+  animation-delay: calc(var(--i, 0) * 50ms + var(--base-delay, 0s));
+}
+.swap-entry__who { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.swap-entry__who .avatar { width: 28px; height: 28px; font-size: .8rem; }
+.swap-entry__who strong { font-weight: 800; }
+.swap-entry__arrow {
+  display: inline-block;
+  margin: 0 4px;
+  font-weight: 800;
+  color: var(--jam);
+  animation: swap-arrow 2.4s var(--spring-strong) infinite;
+}
+@keyframes swap-arrow {
+  0%, 60%, 100% { transform: none; }
+  75% { transform: scaleX(-1) scale(1.3); }
+}
+.swap-entry__meta { font-size: .85rem; color: var(--ink-soft); font-weight: 700; }
+
+/* ---------- Byt-dialog ---------- */
+
+.swap-art { position: relative; width: 170px; height: 80px; margin: -4px auto 0; }
+.swap-art svg { position: absolute; top: 10px; width: 64px; height: 64px; }
+.swap-art__a { left: 0; animation: swap-a 2.6s var(--spring) infinite alternate; }
+.swap-art__b { right: 0; animation: swap-b 2.6s var(--spring) infinite alternate; }
+@keyframes swap-a {
+  0%, 25% { transform: translate(0, 0) rotate(0); }
+  55% { transform: translate(53px, -22px) rotate(-180deg) scale(.9); }
+  85%, 100% { transform: translate(106px, 0) rotate(-360deg); }
+}
+@keyframes swap-b {
+  0%, 25% { transform: translate(0, 0) rotate(0); }
+  55% { transform: translate(-53px, 18px) rotate(180deg) scale(1.1); }
+  85%, 100% { transform: translate(-106px, 0) rotate(360deg); }
+}
+
+.swap-list { display: grid; gap: 8px; max-height: 260px; overflow-y: auto; padding: 4px; text-align: left; }
+.swap-option {
+  appearance: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px 8px 8px;
+  border-radius: 999px;
+  border: 2px solid var(--line-strong);
+  background: var(--card-2);
+  cursor: pointer;
+  animation: pop-in .5s var(--spring) backwards;
+  animation-delay: calc(var(--i, 0) * 45ms + .15s);
+  transition: scale .35s var(--spring), background-color .2s, border-color .2s;
+}
+.swap-option:hover { scale: 1.03; border-color: var(--crust); }
+.swap-option.is-selected { background: var(--butter); border-color: #E8A93A; color: #3E2415; scale: 1.04; }
+.swap-option__name { flex: 1; font-weight: 800; text-align: left; }
+.swap-option__date { font-weight: 700; color: var(--ink-soft); }
+.swap-option.is-selected .swap-option__date { color: #6B3F1D; }
+.swap-effect { color: var(--ink); background: var(--butter-soft); border-radius: 14px; padding: 10px 12px; }
+.swap-effect[hidden] { display: none; }
+.btn:disabled { opacity: .45; cursor: not-allowed; scale: 1; rotate: 0deg; }

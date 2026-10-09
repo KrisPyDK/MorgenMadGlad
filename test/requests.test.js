@@ -34,6 +34,8 @@ test('requestType læser titlen', () => {
   assert.equal(requestType('😴 Aflys: 2026-10-16'), 'cancel');
   assert.equal(requestType('Genåbn: 2026-10-16'), 'reopen');
   assert.equal(requestType('Genaabn: 2026-10-16'), 'reopen');
+  assert.equal(requestType('🔁 Byt: Anna ⇄ Bo'), 'swap');
+  assert.equal(requestType('Bytte af noget'), null);
   assert.equal(requestType('Aflysning af noget andet'), null);
   assert.equal(requestType('Fejl på siden'), null);
   assert.equal(requestType(undefined), null);
@@ -66,6 +68,7 @@ test('parseRequest bruger formularen og falder tilbage på titlen', () => {
   assert.deepEqual(parseRequest({ title: 'Tilmeld: Mette', body: '### Navn\n\nMette H\n' }, today), {
     type: 'join',
     name: 'Mette H',
+    other: '',
     date: null,
     rawDate: 'Mette',
     reason: '',
@@ -130,4 +133,48 @@ test('aflysning afviser ugyldige datoer og fremmede', () => {
   const twice = applyRequest(data, { type: 'cancel', date: '2026-10-16', reason: '' }, asOwner).data;
   assert.throws(() => applyRequest(twice, { type: 'cancel', date: '2026-10-16' }, asOwner), /allerede aflyst/);
   assert.throws(() => applyRequest(data, { type: 'reopen', date: '2026-10-16' }, asOwner), /ikke aflyst/);
+});
+
+test('bytning bytter de næstes fredage og skriver i byttelog', () => {
+  const { data: swapped, message } = applyRequest(data, { type: 'swap', name: 'anna', other: 'Carl' }, asAnna);
+  assert.deepEqual(swapped.participants.map((p) => p.name), ['Carl', 'Bo', 'Anna']);
+  assert.deepEqual(swapped.swaps, [{ date: today, a: 'Anna', b: 'Carl', aFrom: '2026-10-16', bFrom: '2026-10-30' }]);
+  assert.match(message, /Anna\*\* og \*\*Carl\*\* har byttet/);
+  assert.match(message, /Anna tager .*30\. oktober, og Carl tager .*16\. oktober/);
+  assert.deepEqual(
+    upcoming(swapped, today, 4).map((e) => e.person.name),
+    ['Carl', 'Bo', 'Anna', 'Carl'],
+  );
+});
+
+test('bytning med aflyste fredage bytter de rigtige datoer', () => {
+  const withCancel = { ...data, cancelled: [{ date: '2026-10-23', reason: 'Møde' }] };
+  const { data: swapped } = applyRequest(withCancel, { type: 'swap', name: 'Bo', other: 'Carl' }, asOwner);
+  assert.deepEqual(swapped.swaps[0], { date: today, a: 'Bo', b: 'Carl', aFrom: '2026-10-30', bFrom: '2026-11-06' });
+  assert.deepEqual(
+    upcoming(swapped, today, 4).map((e) => e.person?.name ?? 'aflyst'),
+    ['Anna', 'aflyst', 'Carl', 'Bo'],
+  );
+});
+
+test('bytning afviser ukendte, sig selv og fremmede', () => {
+  assert.throws(() => applyRequest(data, { type: 'swap', name: 'Anna', other: 'Ukendt' }, asOwner), /kan ikke finde \*\*Ukendt/);
+  assert.throws(() => applyRequest(data, { type: 'swap', name: 'Anna', other: 'anna' }, asOwner), /sig selv/);
+  assert.throws(() => applyRequest(data, { type: 'swap', name: 'Bo', other: 'Carl' }, asStranger), /Kun Bo, Carl/);
+  assert.equal(applyRequest(data, { type: 'swap', name: 'Bo', other: 'Carl' }, { ...asStranger, trusted: true }).data.swaps.length, 1);
+});
+
+test('byttelog gemmer højst 50 bytninger', () => {
+  let current = data;
+  for (let i = 0; i < 55; i++) current = applyRequest(current, { type: 'swap', name: 'Anna', other: 'Bo' }, asOwner).data;
+  assert.equal(current.swaps.length, 50);
+});
+
+test('bytte-issue læses fra formularen og titlen', () => {
+  const form = parseRequest({ title: '🔁 Byt: ', body: '### Navn\n\nAnna\n\n### Byt med\n\nCarl\n' }, today);
+  assert.equal(form.type, 'swap');
+  assert.equal(form.name, 'Anna');
+  assert.equal(form.other, 'Carl');
+  const title = parseRequest({ title: '🔁 Byt: Anna ⇄ Bo', body: '' }, today);
+  assert.deepEqual([title.name, title.other], ['Anna', 'Bo']);
 });

@@ -19,6 +19,8 @@
  *                 springes over, så alle efter rykker en uge.
  *   history       Tidligere fredage, låst fast: [{ date, name }] eller
  *                 [{ date, cancelled: true, reason }]
+ *   swaps         Byttelog: [{ date, a, b, aFrom, bFrom }] – a og b byttede
+ *                 plads den `date`, så a tog bFrom og b tog aFrom.
  */
 
 const TIME_ZONE = 'Europe/Copenhagen';
@@ -93,6 +95,7 @@ function normalizeData(raw, today) {
     participants,
     cancelled: [...cancelled.values()].sort((a, b) => a.date.localeCompare(b.date)),
     history: Array.isArray(source.history) ? source.history.filter((h) => h && isValidDate(h.date)) : [],
+    swaps: Array.isArray(source.swaps) ? source.swaps.filter((s) => s && isValidDate(s.date) && s.a && s.b) : [],
   };
 }
 
@@ -191,15 +194,16 @@ function settle(data, today) {
 
 class RequestError extends Error {}
 
-const TYPES = { tilmeld: 'join', afmeld: 'leave', aflys: 'cancel', genåbn: 'reopen', genaabn: 'reopen' };
+const TYPES = { tilmeld: 'join', afmeld: 'leave', aflys: 'cancel', genåbn: 'reopen', genaabn: 'reopen', byt: 'swap' };
 const TRUSTED = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
 const DEFAULT_REASON = 'Ingen morgenmad';
+const MAX_SWAPS = 50;
 
 /** Finder handlingen ud fra titlen, f.eks. "🥐 Tilmeld: Mette" -> "join". */
 function requestType(title) {
   const match = String(title ?? '')
     .toLowerCase()
-    .match(/^[^\p{L}]*(tilmeld|afmeld|aflys|genåbn|genaabn)(?!\p{L})/u);
+    .match(/^[^\p{L}]*(tilmeld|afmeld|aflys|genåbn|genaabn|byt)(?!\p{L})/u);
   return match ? TYPES[match[1]] : null;
 }
 
@@ -266,10 +270,12 @@ function parseRequest(issue, today) {
   if (!type) return null;
   const fields = parseIssueForm(issue.body);
   const titleRest = String(issue.title).split(':').slice(1).join(':');
+  const [titleName, titleOther] = titleRest.split(/⇄|<->|\bmed\b/);
   const rawDate = field(fields, 'fredag') || field(fields, 'dato') || titleRest;
   return {
     type,
-    name: cleanName(field(fields, 'navn') || titleRest),
+    name: cleanName(field(fields, 'navn') || (type === 'swap' ? titleName : titleRest)),
+    other: cleanName(field(fields, 'byt med') || titleOther),
     date: parseDate(rawDate, today),
     rawDate: cleanReason(rawDate),
     reason: cleanReason(field(fields, 'grund')),
@@ -287,6 +293,7 @@ const nice = (iso) => formatDate(iso, { weekday: 'long', day: 'numeric', month: 
  *   - Alle med en GitHub-konto kan tilmelde sig.
  *   - Man kan afmelde sig selv; ejere/collaborators kan afmelde alle.
  *   - Deltagere og ejere/collaborators kan aflyse og genåbne fredage.
+ *   - Man kan bytte sin egen fredag; ejere/collaborators kan bytte alle.
  * Med `trusted: true` (Google Sheet uden login) må alle det hele.
  */
 function applyRequest(data, request, { today, author = '', association = 'NONE', trusted: trustAll = false }) {
@@ -362,6 +369,30 @@ function applyRequest(data, request, { today, author = '', association = 'NONE',
       };
     }
 
+    case 'swap': {
+      const find = (name) => data.participants.find((p) => name && sameName(p.name, name));
+      const a = find(request.name);
+      const b = find(request.other);
+      if (!a) throw new RequestError(`Jeg kan ikke finde **${request.name || '(intet navn)'}** på listen.`);
+      if (!b) throw new RequestError(`Jeg kan ikke finde **${request.other || '(intet navn)'}** på listen.`);
+      if (a === b) throw new RequestError('Man kan ikke bytte med sig selv. 🙂');
+      if (!trusted && !isAuthor(a) && !isAuthor(b)) {
+        throw new RequestError(`Kun ${a.name}, ${b.name} eller en med skriveadgang til repoet kan bytte deres fredage.`);
+      }
+
+      const dates = nextDates(data, today);
+      const aFrom = dates.get(a.name);
+      const bFrom = dates.get(b.name);
+      const participants = data.participants.map((p) => (p === a ? b : p === b ? a : p));
+      const swap = { date: today, a: a.name, b: b.name, aFrom, bFrom };
+      return {
+        data: { ...data, participants, swaps: [...(data.swaps ?? []), swap].slice(-MAX_SWAPS) },
+        message:
+          `**${a.name}** og **${b.name}** har byttet! 🔁\n\n` +
+          `${a.name} tager ${formatDate(bFrom)}, og ${b.name} tager ${formatDate(aFrom)}.`,
+      };
+    }
+
     default:
       throw new RequestError('Ukendt handling.');
   }
@@ -373,20 +404,23 @@ function applyRequest(data, request, { today, author = '', association = 'NONE',
 /**
  * Google Apps Script-server til MorgenMadGlad.
  *
- * Gemmer listen i det Google Sheet scriptet hører til, så ingen behøver login.
+ * Gemmer listen i et Google Sheet, så ingen behøver login.
  * Siden henter listen med GET og sender ændringer med POST:
- *   { action: 'join' | 'leave' | 'cancel' | 'reopen', name?, date?, reason? }
+ *   { action: 'join' | 'leave' | 'cancel' | 'reopen' | 'swap', name?, other?, date?, reason? }
  *
  * Arkene oprettes automatisk:
  *   Data – listen som JSON i celle A1 (selve "databasen")
  *   Plan – de næste fredage, så du kan se planen direkte i arket
- *   Log  – hvem der gjorde hvad og hvornår
+ *   Log  – hvem der gjorde hvad og hvornår (også bytninger)
  */
+
+// Arket listen gemmes i. Tom = det ark scriptet er oprettet fra (Udvidelser → Apps Script).
+const SPREADSHEET_ID = '1irWR090aEoYwSsp8o0U_YjfxElnuwXdATMLrGvQM3-A';
 
 const DATA_SHEET = 'Data';
 const PLAN_SHEET = 'Plan';
 const LOG_SHEET = 'Log';
-const ACTIONS = ['join', 'leave', 'cancel', 'reopen'];
+const ACTIONS = ['join', 'leave', 'cancel', 'reopen', 'swap'];
 const MAX_PARTICIPANTS = 60;
 
 function doGet() {
@@ -440,6 +474,7 @@ function toRequest_(body, today) {
   return {
     type: body.action,
     name: cleanName(body.name),
+    other: cleanName(body.other),
     date: parseDate(body.date, today),
     rawDate: cleanReason(body.date),
     reason: cleanReason(body.reason),
@@ -451,7 +486,7 @@ function today_() {
 }
 
 function sheet_(name) {
-  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  const spreadsheet = SPREADSHEET_ID ? SpreadsheetApp.openById(SPREADSHEET_ID) : SpreadsheetApp.getActiveSpreadsheet();
   return spreadsheet.getSheetByName(name) || spreadsheet.insertSheet(name);
 }
 
@@ -480,7 +515,12 @@ function writeData_(data, today) {
 }
 
 function log_(request, message) {
-  const what = request.type === 'cancel' || request.type === 'reopen' ? request.date : request.name;
+  const what =
+    request.type === 'cancel' || request.type === 'reopen'
+      ? request.date
+      : request.type === 'swap'
+        ? `${request.name} ⇄ ${request.other}`
+        : request.name;
   sheet_(LOG_SHEET).appendRow([new Date(), request.type, what || '', String(message).replace(/\*\*/g, '')]);
 }
 

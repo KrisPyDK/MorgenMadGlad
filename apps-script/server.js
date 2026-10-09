@@ -2,20 +2,23 @@
 /**
  * Google Apps Script-server til MorgenMadGlad.
  *
- * Gemmer listen i det Google Sheet scriptet hører til, så ingen behøver login.
+ * Gemmer listen i et Google Sheet, så ingen behøver login.
  * Siden henter listen med GET og sender ændringer med POST:
- *   { action: 'join' | 'leave' | 'cancel' | 'reopen', name?, date?, reason? }
+ *   { action: 'join' | 'leave' | 'cancel' | 'reopen' | 'swap', name?, other?, date?, reason? }
  *
  * Arkene oprettes automatisk:
  *   Data – listen som JSON i celle A1 (selve "databasen")
  *   Plan – de næste fredage, så du kan se planen direkte i arket
- *   Log  – hvem der gjorde hvad og hvornår
+ *   Log  – hvem der gjorde hvad og hvornår (også bytninger)
  */
+
+// Arket listen gemmes i. Tom = det ark scriptet er oprettet fra (Udvidelser → Apps Script).
+const SPREADSHEET_ID = '1irWR090aEoYwSsp8o0U_YjfxElnuwXdATMLrGvQM3-A';
 
 const DATA_SHEET = 'Data';
 const PLAN_SHEET = 'Plan';
 const LOG_SHEET = 'Log';
-const ACTIONS = ['join', 'leave', 'cancel', 'reopen'];
+const ACTIONS = ['join', 'leave', 'cancel', 'reopen', 'swap'];
 const MAX_PARTICIPANTS = 60;
 
 function doGet() {
@@ -69,6 +72,7 @@ function toRequest_(body, today) {
   return {
     type: body.action,
     name: cleanName(body.name),
+    other: cleanName(body.other),
     date: parseDate(body.date, today),
     rawDate: cleanReason(body.date),
     reason: cleanReason(body.reason),
@@ -80,7 +84,7 @@ function today_() {
 }
 
 function sheet_(name) {
-  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  const spreadsheet = SPREADSHEET_ID ? SpreadsheetApp.openById(SPREADSHEET_ID) : SpreadsheetApp.getActiveSpreadsheet();
   return spreadsheet.getSheetByName(name) || spreadsheet.insertSheet(name);
 }
 
@@ -109,7 +113,12 @@ function writeData_(data, today) {
 }
 
 function log_(request, message) {
-  const what = request.type === 'cancel' || request.type === 'reopen' ? request.date : request.name;
+  const what =
+    request.type === 'cancel' || request.type === 'reopen'
+      ? request.date
+      : request.type === 'swap'
+        ? `${request.name} ⇄ ${request.other}`
+        : request.name;
   sheet_(LOG_SHEET).appendRow([new Date(), request.type, what || '', String(message).replace(/\*\*/g, '')]);
 }
 

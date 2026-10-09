@@ -10,6 +10,8 @@
  *                 springes over, så alle efter rykker en uge.
  *   history       Tidligere fredage, låst fast: [{ date, name }] eller
  *                 [{ date, cancelled: true, reason }]
+ *   swaps         Byttelog: [{ date, a, b, aFrom, bFrom }] – a og b byttede
+ *                 plads den `date`, så a tog bFrom og b tog aFrom.
  */
 
 export const TIME_ZONE = 'Europe/Copenhagen';
@@ -84,6 +86,7 @@ export function normalizeData(raw, today) {
     participants,
     cancelled: [...cancelled.values()].sort((a, b) => a.date.localeCompare(b.date)),
     history: Array.isArray(source.history) ? source.history.filter((h) => h && isValidDate(h.date)) : [],
+    swaps: Array.isArray(source.swaps) ? source.swaps.filter((s) => s && isValidDate(s.date) && s.a && s.b) : [],
   };
 }
 

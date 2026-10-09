@@ -6,15 +6,16 @@ import { formatDate, isFriday, isValidDate, nextDates, upcoming } from './schedu
 
 export class RequestError extends Error {}
 
-const TYPES = { tilmeld: 'join', afmeld: 'leave', aflys: 'cancel', genåbn: 'reopen', genaabn: 'reopen' };
+const TYPES = { tilmeld: 'join', afmeld: 'leave', aflys: 'cancel', genåbn: 'reopen', genaabn: 'reopen', byt: 'swap' };
 const TRUSTED = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
 const DEFAULT_REASON = 'Ingen morgenmad';
+const MAX_SWAPS = 50;
 
 /** Finder handlingen ud fra titlen, f.eks. "🥐 Tilmeld: Mette" -> "join". */
 export function requestType(title) {
   const match = String(title ?? '')
     .toLowerCase()
-    .match(/^[^\p{L}]*(tilmeld|afmeld|aflys|genåbn|genaabn)(?!\p{L})/u);
+    .match(/^[^\p{L}]*(tilmeld|afmeld|aflys|genåbn|genaabn|byt)(?!\p{L})/u);
   return match ? TYPES[match[1]] : null;
 }
 
@@ -81,10 +82,12 @@ export function parseRequest(issue, today) {
   if (!type) return null;
   const fields = parseIssueForm(issue.body);
   const titleRest = String(issue.title).split(':').slice(1).join(':');
+  const [titleName, titleOther] = titleRest.split(/⇄|<->|\bmed\b/);
   const rawDate = field(fields, 'fredag') || field(fields, 'dato') || titleRest;
   return {
     type,
-    name: cleanName(field(fields, 'navn') || titleRest),
+    name: cleanName(field(fields, 'navn') || (type === 'swap' ? titleName : titleRest)),
+    other: cleanName(field(fields, 'byt med') || titleOther),
     date: parseDate(rawDate, today),
     rawDate: cleanReason(rawDate),
     reason: cleanReason(field(fields, 'grund')),
@@ -102,6 +105,7 @@ const nice = (iso) => formatDate(iso, { weekday: 'long', day: 'numeric', month: 
  *   - Alle med en GitHub-konto kan tilmelde sig.
  *   - Man kan afmelde sig selv; ejere/collaborators kan afmelde alle.
  *   - Deltagere og ejere/collaborators kan aflyse og genåbne fredage.
+ *   - Man kan bytte sin egen fredag; ejere/collaborators kan bytte alle.
  * Med `trusted: true` (Google Sheet uden login) må alle det hele.
  */
 export function applyRequest(data, request, { today, author = '', association = 'NONE', trusted: trustAll = false }) {
@@ -174,6 +178,30 @@ export function applyRequest(data, request, { today, author = '', association = 
         message:
           `${nice(date)} er genåbnet! 🎉` +
           (entry?.person ? `\n\n**${entry.person.name}** står for morgenmaden, og listen rykker en uge tilbage.` : ''),
+      };
+    }
+
+    case 'swap': {
+      const find = (name) => data.participants.find((p) => name && sameName(p.name, name));
+      const a = find(request.name);
+      const b = find(request.other);
+      if (!a) throw new RequestError(`Jeg kan ikke finde **${request.name || '(intet navn)'}** på listen.`);
+      if (!b) throw new RequestError(`Jeg kan ikke finde **${request.other || '(intet navn)'}** på listen.`);
+      if (a === b) throw new RequestError('Man kan ikke bytte med sig selv. 🙂');
+      if (!trusted && !isAuthor(a) && !isAuthor(b)) {
+        throw new RequestError(`Kun ${a.name}, ${b.name} eller en med skriveadgang til repoet kan bytte deres fredage.`);
+      }
+
+      const dates = nextDates(data, today);
+      const aFrom = dates.get(a.name);
+      const bFrom = dates.get(b.name);
+      const participants = data.participants.map((p) => (p === a ? b : p === b ? a : p));
+      const swap = { date: today, a: a.name, b: b.name, aFrom, bFrom };
+      return {
+        data: { ...data, participants, swaps: [...(data.swaps ?? []), swap].slice(-MAX_SWAPS) },
+        message:
+          `**${a.name}** og **${b.name}** har byttet! 🔁\n\n` +
+          `${a.name} tager ${formatDate(bFrom)}, og ${b.name} tager ${formatDate(aFrom)}.`,
       };
     }
 

@@ -1,0 +1,22 @@
+name: 🔁 Byt fredag
+description: Byt din næste fredag med en kollega.
+title: "🔁 Byt: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        I bytter jeres næste fredage – og plads i rækkefølgen. Byttet står i byttelogen på siden.
+  - type: input
+    id: navn
+    attributes:
+      label: Navn
+      description: Dit navn præcis som det står på listen.
+    validations:
+      required: true
+  - type: input
+    id: med
+    attributes:
+      label: Byt med
+      description: Navnet på den du bytter med.
+    validations:
+      required: true

@@ -10,6 +10,11 @@ const code = readFileSync(new URL(`../${OUTPUT}`, import.meta.url), 'utf8');
 /** Et lille, falsk Google-miljø: regneark i hukommelsen, lås og ContentService. */
 function googleSandbox({ today = '2026-10-12', lockFree = true } = {}) {
   const sheets = new Map();
+  const opened = new Set();
+  const spreadsheet = {
+    getSheetByName: (name) => sheets.get(name) ?? null,
+    insertSheet: (name) => sheets.set(name, makeSheet()).get(name),
+  };
   const makeSheet = () => {
     const sheet = {
       cells: new Map(),
@@ -27,10 +32,11 @@ function googleSandbox({ today = '2026-10-12', lockFree = true } = {}) {
   const context = vm.createContext({
     console: { error() {}, log() {} },
     SpreadsheetApp: {
-      getActiveSpreadsheet: () => ({
-        getSheetByName: (name) => sheets.get(name) ?? null,
-        insertSheet: (name) => sheets.set(name, makeSheet()).get(name),
-      }),
+      openById: (id) => {
+        opened.add(id);
+        return spreadsheet;
+      },
+      getActiveSpreadsheet: () => spreadsheet,
     },
     LockService: { getScriptLock: () => ({ tryLock: () => lockFree, releaseLock() {} }) },
     ContentService: {
@@ -43,6 +49,7 @@ function googleSandbox({ today = '2026-10-12', lockFree = true } = {}) {
   const call = (name, arg) => JSON.parse(vm.runInContext(name, context)(arg).text);
   return {
     sheets,
+    opened,
     get: () => call('doGet'),
     post: (body) => call('doPost', { postData: { contents: typeof body === 'string' ? body : JSON.stringify(body) } }),
   };
@@ -101,6 +108,29 @@ test('ugyldige anmodninger afvises med dansk besked og den aktuelle liste', () =
   assert.equal(google.post({ action: 'cancel', date: '2026-10-15' }).ok, false);
   assert.equal(google.post({ action: 'slet-alt' }).error, 'Ukendt handling.');
   assert.equal(google.post('ikke json').error, 'Ukendt handling.');
+});
+
+test('bytning gemmes og står i loggen', () => {
+  const google = googleSandbox();
+  for (const name of ['Mette', 'Bo', 'Carl']) google.post({ action: 'join', name });
+  const swap = google.post({ action: 'swap', name: 'Mette', other: 'Carl' });
+  assert.equal(swap.ok, true);
+  assert.deepEqual(plain(swap.data.swaps), [
+    { date: '2026-10-12', a: 'Mette', b: 'Carl', aFrom: '2026-10-16', bFrom: '2026-10-30' },
+  ]);
+  assert.deepEqual(plain(google.sheets.get('Plan').values.slice(1, 4)), [
+    ['2026-10-16', 'Carl'],
+    ['2026-10-23', 'Bo'],
+    ['2026-10-30', 'Mette'],
+  ]);
+  assert.deepEqual(plain(google.sheets.get('Log').rows.at(-1).slice(1, 3)), ['swap', 'Mette ⇄ Carl']);
+  assert.equal(google.post({ action: 'swap', name: 'Mette', other: 'Ukendt' }).ok, false);
+});
+
+test('scriptet bruger dit Google Sheet', () => {
+  const google = googleSandbox();
+  google.get();
+  assert.deepEqual([...google.opened], ['1irWR090aEoYwSsp8o0U_YjfxElnuwXdATMLrGvQM3-A']);
 });
 
 test('travlt bageri: låsen er optaget', () => {
