@@ -73,6 +73,34 @@ function formatDate(iso, options = { weekday: 'long', day: 'numeric', month: 'lo
   return new Intl.DateTimeFormat('da-DK', { ...options, timeZone: 'UTC' }).format(new Date(toTime(iso)));
 }
 
+/** Forskydning (ms) mellem UTC og tidszonen på et givent tidspunkt, så sommer-/vintertid passer. */
+function zoneOffset(ms, timeZone) {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      hourCycle: 'h23',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    })
+      .formatToParts(new Date(ms))
+      .map((part) => [part.type, part.value]),
+  );
+  const local = Date.UTC(+parts.year, +parts.month - 1, +parts.day, +parts.hour, +parts.minute, +parts.second);
+  return local - Math.floor(ms / 1000) * 1000;
+}
+
+/** Tidspunktet (ms) hvor klokken er `hour` i dansk tid på datoen `daysBefore` dage før `iso`. */
+function deadlineFor(iso, daysBefore = 1, hour = 12, timeZone = TIME_ZONE) {
+  const [y, m, d] = addDays(iso, -daysBefore).split('-').map(Number);
+  const guess = Date.UTC(y, m - 1, d, hour);
+  const first = guess - zoneOffset(guess, timeZone);
+  return guess - zoneOffset(first, timeZone);
+}
+
 /** Rydder op i data.json, så resten af koden kan stole på formatet. */
 function normalizeData(raw, today) {
   const source = raw && typeof raw === 'object' ? raw : {};

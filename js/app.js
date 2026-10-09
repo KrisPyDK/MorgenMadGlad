@@ -1,7 +1,9 @@
 import { config } from './config.js';
 import { RequestError, applyRequest, cleanName } from './requests.js';
 import {
+  addDays,
   butterPlan,
+  deadlineFor,
   daysBetween,
   formatDate,
   isFriday,
@@ -357,9 +359,11 @@ function render() {
 }
 
 function renderNext(entries, next) {
-  const order = $('#order-link');
-  order.hidden = !config.orderUrl;
-  if (config.orderUrl) order.href = config.orderUrl;
+  $('#order').hidden = !config.orderUrl;
+  if (config.orderUrl) $('#order-link').href = config.orderUrl;
+  state.deadline = next ? deadlineFor(next.date, config.orderDaysBefore, config.orderHour) : null;
+  state.deadlineDate = next ? next.date : null;
+  tickOrder();
 
   const eyebrow = $('#next-eyebrow');
   const name = $('#next-name');
@@ -407,6 +411,31 @@ function renderNext(entries, next) {
   }
 
   replay(name, 'rubber');
+}
+
+/** Nedtælling til sidste frist for bestilling. */
+function tickOrder() {
+  const timer = $('#order-timer');
+  timer.hidden = !state.deadline;
+  if (!state.deadline) return;
+  const left = state.deadline - Date.now();
+  const deadlineDay = formatDate(addDays(state.deadlineDate, -config.orderDaysBefore), { weekday: 'long' });
+  const label = `${capitalize(deadlineDay)} kl. ${String(config.orderHour).padStart(2, '0')}`;
+  timer.classList.toggle('is-expired', left <= 0);
+  timer.classList.toggle('is-urgent', left > 0 && left < 3600_000);
+  if (left <= 0) {
+    $('#order-label').textContent = 'Bestillingsfristen er overstået';
+    $('#order-time').textContent = `(${label})`;
+    return;
+  }
+  const total = Math.floor(left / 1000);
+  const days = Math.floor(total / 86400);
+  const hours = Math.floor((total % 86400) / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const seconds = total % 60;
+  const two = (n) => String(n).padStart(2, '0');
+  $('#order-label').textContent = `Bestil senest ${label}`;
+  $('#order-time').textContent = `${days ? `${days}d ` : ''}${two(hours)}t ${two(minutes)}m ${two(seconds)}s`;
 }
 
 function butterPill(entry) {
@@ -1187,6 +1216,7 @@ function init() {
   );
 
   setInterval(waveTitle, 7000);
+  setInterval(tickOrder, 1000);
 
   if (state.mode === 'sheet') {
     loadCached();

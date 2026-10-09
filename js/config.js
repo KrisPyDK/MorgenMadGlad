@@ -11,6 +11,9 @@
 export const config = {
   apiUrl: 'https://script.google.com/macros/s/AKfycbw57PO5myjtMou1yt5b4y_kYitBdcmpVebKzPJeh9LLAK3-YgikNs_Zug1yZFOXeuxTWA/exec',
   // Knappen "Bestil morgenbrød" fører hertil. Tom = ingen knap.
+  // Sidste frist for at bestille: dagen før fredagen (1 = torsdag) kl. 12 dansk tid.
+  orderDaysBefore: 1,
+  orderHour: 12,
   orderUrl: 'https://shop.foodandco.dk/terma-lystrup/varesortiment',
   repo: 'KrisPyDK/MorgenMadGlad',
   weeksAhead: 8,

@@ -12,6 +12,7 @@ En lille, bouncy hjemmeside til GitHub Pages, der holder styr på fredagsmorgenm
 - **Genåbn** en aflyst fredag, hvis planerne ændrer sig.
 - **Byt** din fredag med en kollega – alle bytninger står i **byttelogen** på siden (og i arkets *Log*).
 - **Smør** – smørret holder flere gange. Tryk "Smør" på en fredag, når det slipper op, så vælges den næste på listen, der *ikke* har morgenmad den dag. **Smørlisten** viser hvem der skal have smør med, hvem der har haft det, og hvor mange gange.
+- **Nedtælling til bestilling** – ved siden af knappen tæller en timer ned til sidste frist: torsdag kl. 12 (dansk tid) dagen før fredagen. Den bliver rød den sidste time. Ret `orderDaysBefore`/`orderHour` i `js/config.js` hvis fristen ændrer sig.
 - **Bestil morgenbrød** – knappen i "Næste fredag" fører til [Food & Co Terma Lystrup](https://shop.foodandco.dk/terma-lystrup/varesortiment) (ret `orderUrl` i `js/config.js`).
 - Bagerholdet, ugenumre, historik og en masse hoppende wienerbrød. 🥨
 

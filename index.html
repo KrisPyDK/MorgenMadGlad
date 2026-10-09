@@ -132,9 +132,15 @@
           <span class="oven__label" id="oven-label"></span>
         </div>
         <p class="next__note" id="next-note" hidden></p>
-        <a class="btn btn--order" id="order-link" href="#" target="_blank" rel="noopener" hidden>
-          <span class="btn--order__icon" aria-hidden="true">🛒</span> Bestil morgenbrød
-        </a>
+        <div class="order" id="order" hidden>
+          <a class="btn btn--order" id="order-link" href="#" target="_blank" rel="noopener">
+            <span class="btn--order__icon" aria-hidden="true">🛒</span> Bestil morgenbrød
+          </a>
+          <div class="order-timer" id="order-timer" role="timer" aria-live="off">
+            <span class="order-timer__label" id="order-label"></span>
+            <span class="order-timer__time" id="order-time"></span>
+          </div>
+        </div>
       </div>
     </section>
 

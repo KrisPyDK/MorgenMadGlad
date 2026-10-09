@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
   butterPlan,
+  deadlineFor,
   fridayOnOrAfter,
   isFriday,
   isoWeek,
@@ -157,4 +158,13 @@ test('settle gemmer smør i historikken og flytter fremtidigt smør med', () => 
   ]);
   assert.deepEqual(settled.butter, [{ date: '2026-11-06', name: 'Anna' }]);
   assert.deepEqual(butterNames(settled), ['2026-11-06:Anna']);
+});
+
+test('bestillingsfristen er torsdag kl. 12 dansk tid – både sommer- og vintertid', () => {
+  const iso = (ms) => new Date(ms).toISOString();
+  assert.equal(iso(deadlineFor('2026-10-16')), '2026-10-15T10:00:00.000Z'); // sommertid (UTC+2)
+  assert.equal(iso(deadlineFor('2026-11-06')), '2026-11-05T11:00:00.000Z'); // vintertid (UTC+1)
+  assert.equal(iso(deadlineFor('2026-03-27')), '2026-03-26T11:00:00.000Z'); // dagen før skiftet til sommertid
+  assert.equal(iso(deadlineFor('2026-04-03')), '2026-04-02T10:00:00.000Z'); // efter skiftet
+  assert.equal(iso(deadlineFor('2026-10-30')), '2026-10-29T11:00:00.000Z'); // efter skiftet til vintertid (25. okt.)
 });
