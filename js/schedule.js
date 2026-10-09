@@ -12,6 +12,8 @@
  *                 [{ date, cancelled: true, reason }]
  *   swaps         Byttelog: [{ date, a, b, aFrom, bFrom }] – a og b byttede
  *                 plads den `date`, så a tog bFrom og b tog aFrom.
+ *   marks         Markeringer af om morgenmaden blev givet: [{ date, given: true|false }].
+ *                 Når fredagen er overstået, flyttes den til history som { ..., given }.
  *   butter        Fredage hvor der skal købes smør: [{ date, name }]. `name`
  *                 vælges når smørret tilføjes (se pickButter). Tidligere
  *                 smør står i history som { ..., butter: navn }.
@@ -89,6 +91,7 @@ export function normalizeData(raw, today) {
     participants,
     cancelled: [...cancelled.values()].sort((a, b) => a.date.localeCompare(b.date)),
     history: Array.isArray(source.history) ? source.history.filter((h) => h && isValidDate(h.date)) : [],
+    marks: (Array.isArray(source.marks) ? source.marks : []).filter((m) => m && isFriday(m.date) && typeof m.given === 'boolean'),
     swaps: Array.isArray(source.swaps) ? source.swaps.filter((s) => s && isValidDate(s.date) && s.a && s.b) : [],
     butter: (Array.isArray(source.butter) ? source.butter : [])
       .map((b) => (typeof b === 'string' ? { date: b } : { ...b }))
@@ -162,6 +165,7 @@ export function settle(data, today) {
   if (data.anchor >= target) return data;
 
   const plan = butterPlan(data);
+  const marks = data.marks || [];
   const butterOn = new Map(plan.map((item) => [item.date, item.name]));
   const history = [...data.history];
   let turns = 0;
@@ -172,8 +176,11 @@ export function settle(data, today) {
     }
     if (entry.cancelled) history.push({ date: entry.date, cancelled: true, reason: entry.reason });
     else if (entry.person) {
-      const butter = butterOn.get(entry.date);
-      history.push(butter ? { date: entry.date, name: entry.person.name, butter } : { date: entry.date, name: entry.person.name });
+      const done = { date: entry.date, name: entry.person.name };
+      if (butterOn.get(entry.date)) done.butter = butterOn.get(entry.date);
+      const mark = marks.find((m) => m.date === entry.date);
+      if (mark) done.given = mark.given;
+      history.push(done);
     }
   }
 
@@ -194,6 +201,7 @@ export function settle(data, today) {
     cancelled: data.cancelled.filter((c) => c.date >= target),
     history: history.slice(-MAX_HISTORY),
     butter,
+    marks: marks.filter((m) => m.date >= target),
   };
 }
 

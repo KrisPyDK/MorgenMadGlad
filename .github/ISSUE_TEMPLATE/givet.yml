@@ -1,0 +1,11 @@
+name: ✅ Morgenmad blev givet
+description: Marker at morgenmaden blev givet på en fredag.
+title: "✅ Givet: "
+body:
+  - type: input
+    id: fredag
+    attributes:
+      label: Fredag (ÅÅÅÅ-MM-DD)
+      placeholder: "2026-10-09"
+    validations:
+      required: true

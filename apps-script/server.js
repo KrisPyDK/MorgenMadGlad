@@ -4,7 +4,7 @@
  *
  * Gemmer listen i et Google Sheet, så ingen behøver login.
  * Siden henter listen med GET og sender ændringer med POST:
- *   { action: 'join' | 'leave' | 'cancel' | 'reopen' | 'swap' | 'butter' | 'unbutter', name?, other?, date?, reason? }
+ *   { action: 'join' | 'leave' | 'cancel' | 'reopen' | 'swap' | 'butter' | 'unbutter' | 'mark', name?, other?, date?, reason?, given? }
  *
  * Arkene oprettes automatisk:
  *   Data – listen som JSON i celle A1 (selve "databasen")
@@ -18,7 +18,7 @@ const SPREADSHEET_ID = '1NivBtDLpzeWHS6q6aGp6IQ8Gg42iskbLPOjtTi2L1Bw';
 const DATA_SHEET = 'Data';
 const PLAN_SHEET = 'Plan';
 const LOG_SHEET = 'Log';
-const ACTIONS = ['join', 'leave', 'cancel', 'reopen', 'swap', 'butter', 'unbutter'];
+const ACTIONS = ['join', 'leave', 'cancel', 'reopen', 'swap', 'butter', 'unbutter', 'mark'];
 const MAX_PARTICIPANTS = 60;
 
 function doGet() {
@@ -76,6 +76,7 @@ function toRequest_(body, today) {
     date: parseDate(body.date, today),
     rawDate: cleanReason(body.date),
     reason: cleanReason(body.reason),
+    given: body.given === true ? true : body.given === false ? false : null,
   };
 }
 
@@ -90,7 +91,7 @@ function sheet_(name) {
 
 function readData_(today) {
   const text = String(sheet_(DATA_SHEET).getRange('A1').getValue() || '').trim();
-  if (!text) return { anchor: fridayOnOrAfter(addDays(today, 1)), participants: [], cancelled: [], history: [] };
+  if (!text) return { anchor: fridayOnOrAfter(today), participants: [], cancelled: [], history: [] };
   try {
     return JSON.parse(text);
   } catch (_) {
@@ -104,19 +105,21 @@ function writeData_(data, today) {
   sheet.getRange('A3').setValue('Listen gemmes som JSON i A1. Brug helst hjemmesiden – eller ret forsigtigt.');
 
   const butter = new Map(butterPlan(data).map((item) => [item.date, item.name]));
+  const marks = new Map((data.marks || []).map((m) => [m.date, m.given ? '✅ Givet' : '❌ Ikke givet']));
   const rows = upcoming(data, today, 12).map((entry) => [
     entry.date,
     entry.cancelled ? `Aflyst – ${entry.reason || 'ingen morgenmad'}` : entry.person ? entry.person.name : '',
     butter.get(entry.date) || '',
+    marks.get(entry.date) || '',
   ]);
   const plan = sheet_(PLAN_SHEET);
   plan.clearContents();
-  plan.getRange(1, 1, rows.length + 1, 3).setValues([['Fredag', 'Morgenmad', 'Smør'], ...rows]);
+  plan.getRange(1, 1, rows.length + 1, 4).setValues([['Fredag', 'Morgenmad', 'Smør', 'Givet?'], ...rows]);
 }
 
 function log_(request, message) {
   const what =
-    ['cancel', 'reopen', 'butter', 'unbutter'].includes(request.type)
+    ['cancel', 'reopen', 'butter', 'unbutter', 'mark'].includes(request.type)
       ? request.date
       : request.type === 'swap'
         ? `${request.name} ⇄ ${request.other}`

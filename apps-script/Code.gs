@@ -21,6 +21,8 @@
  *                 [{ date, cancelled: true, reason }]
  *   swaps         Byttelog: [{ date, a, b, aFrom, bFrom }] – a og b byttede
  *                 plads den `date`, så a tog bFrom og b tog aFrom.
+ *   marks         Markeringer af om morgenmaden blev givet: [{ date, given: true|false }].
+ *                 Når fredagen er overstået, flyttes den til history som { ..., given }.
  *   butter        Fredage hvor der skal købes smør: [{ date, name }]. `name`
  *                 vælges når smørret tilføjes (se pickButter). Tidligere
  *                 smør står i history som { ..., butter: navn }.
@@ -98,6 +100,7 @@ function normalizeData(raw, today) {
     participants,
     cancelled: [...cancelled.values()].sort((a, b) => a.date.localeCompare(b.date)),
     history: Array.isArray(source.history) ? source.history.filter((h) => h && isValidDate(h.date)) : [],
+    marks: (Array.isArray(source.marks) ? source.marks : []).filter((m) => m && isFriday(m.date) && typeof m.given === 'boolean'),
     swaps: Array.isArray(source.swaps) ? source.swaps.filter((s) => s && isValidDate(s.date) && s.a && s.b) : [],
     butter: (Array.isArray(source.butter) ? source.butter : [])
       .map((b) => (typeof b === 'string' ? { date: b } : { ...b }))
@@ -171,6 +174,7 @@ function settle(data, today) {
   if (data.anchor >= target) return data;
 
   const plan = butterPlan(data);
+  const marks = data.marks || [];
   const butterOn = new Map(plan.map((item) => [item.date, item.name]));
   const history = [...data.history];
   let turns = 0;
@@ -181,8 +185,11 @@ function settle(data, today) {
     }
     if (entry.cancelled) history.push({ date: entry.date, cancelled: true, reason: entry.reason });
     else if (entry.person) {
-      const butter = butterOn.get(entry.date);
-      history.push(butter ? { date: entry.date, name: entry.person.name, butter } : { date: entry.date, name: entry.person.name });
+      const done = { date: entry.date, name: entry.person.name };
+      if (butterOn.get(entry.date)) done.butter = butterOn.get(entry.date);
+      const mark = marks.find((m) => m.date === entry.date);
+      if (mark) done.given = mark.given;
+      history.push(done);
     }
   }
 
@@ -203,6 +210,7 @@ function settle(data, today) {
     cancelled: data.cancelled.filter((c) => c.date >= target),
     history: history.slice(-MAX_HISTORY),
     butter,
+    marks: marks.filter((m) => m.date >= target),
   };
 }
 
@@ -277,6 +285,8 @@ const TYPES = {
   smoer: 'butter',
   'fjern smør': 'unbutter',
   'fjern smoer': 'unbutter',
+  'ikke givet': 'mark',
+  givet: 'mark',
 };
 const TRUSTED = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
 const DEFAULT_REASON = 'Ingen morgenmad';
@@ -286,7 +296,7 @@ const MAX_SWAPS = 50;
 function requestType(title) {
   const match = String(title == null ? '' : title)
     .toLowerCase()
-    .match(/^[^a-zæøå]*(tilmeld|afmeld|aflys|genåbn|genaabn|byt|smør|smoer|fjern smør|fjern smoer)(?![a-zæøå])/);
+    .match(/^[^a-zæøå]*(tilmeld|afmeld|aflys|genåbn|genaabn|byt|smør|smoer|fjern smør|fjern smoer|ikke givet|givet)(?![a-zæøå])/);
   return match ? TYPES[match[1]] : null;
 }
 
@@ -362,6 +372,7 @@ function parseRequest(issue, today) {
     date: parseDate(rawDate, today),
     rawDate: cleanReason(rawDate),
     reason: cleanReason(field(fields, 'grund')),
+    given: type === 'mark' ? !/^[^a-zæøå]*ikke/.test(String(issue.title).toLowerCase()) : null,
   };
 }
 
@@ -383,7 +394,7 @@ const nice = (iso) => formatDate(iso, { weekday: 'long', day: 'numeric', month: 
  *   - Man kan afmelde sig selv; ejere/collaborators kan afmelde alle.
  *   - Deltagere og ejere/collaborators kan aflyse og genåbne fredage.
  *   - Man kan bytte sin egen fredag; ejere/collaborators kan bytte alle.
- *   - Deltagere og ejere/collaborators kan tilføje og fjerne smør.
+ *   - Deltagere og ejere/collaborators kan tilføje og fjerne smør og markere om morgenmaden blev givet.
  * Med `trusted: true` (Google Sheet uden login) må alle det hele.
  */
 function applyRequest(data, request, { today, author = '', association = 'NONE', trusted: trustAll = false }) {
@@ -481,6 +492,50 @@ function applyRequest(data, request, { today, author = '', association = 'NONE',
       };
     }
 
+    case 'mark': {
+      const { date } = request;
+      if (!trusted && !authorIsParticipant) {
+        throw new RequestError('Kun deltagere på listen eller personer med skriveadgang til repoet kan markere morgenmad.');
+      }
+      if (!date) throw new RequestError(`Jeg kunne ikke læse datoen "${request.rawDate}". Skriv den som ÅÅÅÅ-MM-DD.`);
+      if (!isFriday(date)) throw new RequestError(`${formatDate(date)} er ikke en fredag.`);
+      if (date > today) throw new RequestError('Det kan først markeres på selve fredagen.');
+      const given = typeof request.given === 'boolean' ? request.given : null;
+
+      let who;
+      let next;
+      const past = data.history.find((h) => h.date === date);
+      if (past && past.name) {
+        who = past.name;
+        next = {
+          ...data,
+          history: data.history.map((h) => {
+            if (h !== past) return h;
+            const copy = { ...h };
+            if (given === null) delete copy.given;
+            else copy.given = given;
+            return copy;
+          }),
+        };
+      } else {
+        const entry = date >= data.anchor ? upcoming(data, date, 1)[0] : null;
+        if (!entry || entry.date !== date || !entry.person) throw new RequestError('Der skulle ikke gives morgenmad den dag.');
+        who = entry.person.name;
+        const marks = (data.marks || []).filter((m) => m.date !== date);
+        if (given !== null) marks.push({ date, given });
+        next = { ...data, marks: marks.sort((a, b) => a.date.localeCompare(b.date)) };
+      }
+      return {
+        data: next,
+        message:
+          given === true
+            ? `✅ **${who}** gav morgenmad ${nice(date)}. Tak!`
+            : given === false
+              ? `❌ Der blev ikke givet morgenmad ${nice(date)}.`
+              : `Markeringen ${nice(date)} er fjernet.`,
+      };
+    }
+
     case 'butter':
     case 'unbutter': {
       const { date } = request;
@@ -530,7 +585,7 @@ function applyRequest(data, request, { today, author = '', association = 'NONE',
  *
  * Gemmer listen i et Google Sheet, så ingen behøver login.
  * Siden henter listen med GET og sender ændringer med POST:
- *   { action: 'join' | 'leave' | 'cancel' | 'reopen' | 'swap' | 'butter' | 'unbutter', name?, other?, date?, reason? }
+ *   { action: 'join' | 'leave' | 'cancel' | 'reopen' | 'swap' | 'butter' | 'unbutter' | 'mark', name?, other?, date?, reason?, given? }
  *
  * Arkene oprettes automatisk:
  *   Data – listen som JSON i celle A1 (selve "databasen")
@@ -544,7 +599,7 @@ const SPREADSHEET_ID = '1NivBtDLpzeWHS6q6aGp6IQ8Gg42iskbLPOjtTi2L1Bw';
 const DATA_SHEET = 'Data';
 const PLAN_SHEET = 'Plan';
 const LOG_SHEET = 'Log';
-const ACTIONS = ['join', 'leave', 'cancel', 'reopen', 'swap', 'butter', 'unbutter'];
+const ACTIONS = ['join', 'leave', 'cancel', 'reopen', 'swap', 'butter', 'unbutter', 'mark'];
 const MAX_PARTICIPANTS = 60;
 
 function doGet() {
@@ -602,6 +657,7 @@ function toRequest_(body, today) {
     date: parseDate(body.date, today),
     rawDate: cleanReason(body.date),
     reason: cleanReason(body.reason),
+    given: body.given === true ? true : body.given === false ? false : null,
   };
 }
 
@@ -616,7 +672,7 @@ function sheet_(name) {
 
 function readData_(today) {
   const text = String(sheet_(DATA_SHEET).getRange('A1').getValue() || '').trim();
-  if (!text) return { anchor: fridayOnOrAfter(addDays(today, 1)), participants: [], cancelled: [], history: [] };
+  if (!text) return { anchor: fridayOnOrAfter(today), participants: [], cancelled: [], history: [] };
   try {
     return JSON.parse(text);
   } catch (_) {
@@ -630,19 +686,21 @@ function writeData_(data, today) {
   sheet.getRange('A3').setValue('Listen gemmes som JSON i A1. Brug helst hjemmesiden – eller ret forsigtigt.');
 
   const butter = new Map(butterPlan(data).map((item) => [item.date, item.name]));
+  const marks = new Map((data.marks || []).map((m) => [m.date, m.given ? '✅ Givet' : '❌ Ikke givet']));
   const rows = upcoming(data, today, 12).map((entry) => [
     entry.date,
     entry.cancelled ? `Aflyst – ${entry.reason || 'ingen morgenmad'}` : entry.person ? entry.person.name : '',
     butter.get(entry.date) || '',
+    marks.get(entry.date) || '',
   ]);
   const plan = sheet_(PLAN_SHEET);
   plan.clearContents();
-  plan.getRange(1, 1, rows.length + 1, 3).setValues([['Fredag', 'Morgenmad', 'Smør'], ...rows]);
+  plan.getRange(1, 1, rows.length + 1, 4).setValues([['Fredag', 'Morgenmad', 'Smør', 'Givet?'], ...rows]);
 }
 
 function log_(request, message) {
   const what =
-    ['cancel', 'reopen', 'butter', 'unbutter'].includes(request.type)
+    ['cancel', 'reopen', 'butter', 'unbutter', 'mark'].includes(request.type)
       ? request.date
       : request.type === 'swap'
         ? `${request.name} ⇄ ${request.other}`

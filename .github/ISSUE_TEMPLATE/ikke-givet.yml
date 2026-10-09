@@ -1,0 +1,11 @@
+name: ❌ Morgenmad blev ikke givet
+description: Marker at morgenmaden ikke blev givet på en fredag.
+title: "❌ Ikke givet: "
+body:
+  - type: input
+    id: fredag
+    attributes:
+      label: Fredag (ÅÅÅÅ-MM-DD)
+      placeholder: "2026-10-09"
+    validations:
+      required: true

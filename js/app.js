@@ -212,6 +212,9 @@ function perform(request) {
   const check = tryRequest(request);
   if (check.error) return Promise.resolve(check.error);
   if (state.mode === 'github') {
+    if (request.type === 'mark' && request.given === null) {
+      return Promise.resolve('Markeringen kan kun fjernes, når listen gemmes i Google Sheet.');
+    }
     openIssue(request);
     return Promise.resolve(null);
   }
@@ -235,6 +238,7 @@ async function save(request) {
         action: request.type,
         name: request.name,
         other: request.other,
+        given: request.given,
         date: request.date,
         reason: request.reason,
       }),
@@ -280,6 +284,10 @@ const ISSUES = {
   reopen: (r) => ['genaabn.yml', `🎉 Genåbn: ${r.date}`, { fredag: r.date }, `Genåbner ${longDate(r.date)}…`],
   butter: (r) => ['smor.yml', `🧈 Smør: ${r.date}`, { fredag: r.date }, `Tilføjer smør ${longDate(r.date)}…`],
   unbutter: (r) => ['fjern-smor.yml', `🧈 Fjern smør: ${r.date}`, { fredag: r.date }, `Fjerner smør ${longDate(r.date)}…`],
+  mark: (r) =>
+    r.given
+      ? ['givet.yml', `✅ Givet: ${r.date}`, { fredag: r.date }, `Markerer ${longDate(r.date)} som givet…`]
+      : ['ikke-givet.yml', `❌ Ikke givet: ${r.date}`, { fredag: r.date }, `Markerer ${longDate(r.date)} som ikke givet…`],
   swap: (r) => ['byt.yml', `🔁 Byt: ${r.name} ⇄ ${r.other}`, { navn: r.name, med: r.other }, `Bytter ${r.name} og ${r.other}…`],
 };
 
@@ -334,6 +342,7 @@ function render() {
   const entries = upcoming(data, today, state.weeks);
   const next = entries.find((entry) => entry.person);
   state.butter = new Map(butterPlan(data).map((item) => [item.date, item]));
+  state.marks = new Map(data.marks.map((m) => [m.date, m.given]));
   assignColors(data.participants);
   renderNext(entries, next);
   renderPlan(entries, next);
@@ -505,7 +514,7 @@ function renderPlan(entries, next) {
           'aria-label': `${longDate(entry.date)}: ${entry.cancelled ? 'aflyst' : entry.person?.name ?? 'ledig'}`,
         },
         dateBox,
-        h('div', { class: 'friday__main' }, who, h('span', { class: 'friday__meta' }, meta), entry.person ? butterPill(entry) : null),
+        h('div', { class: 'friday__main' }, who, h('span', { class: 'friday__meta' }, meta), entry.person ? markBlock(entry) : null, entry.person ? butterPill(entry) : null),
         h('div', { class: 'friday__actions' }, action),
       );
     }),
@@ -634,7 +643,7 @@ function renderHistory() {
     ...unsettled(data, today).map((entry) =>
       entry.cancelled
         ? { date: entry.date, cancelled: true, reason: entry.reason }
-        : { date: entry.date, name: entry.person?.name, butter: state.butter.get(entry.date)?.name },
+        : { date: entry.date, name: entry.person?.name, butter: state.butter.get(entry.date)?.name, given: state.marks.get(entry.date) },
     ),
   ]
     .filter((entry) => entry.cancelled || entry.name)
@@ -658,6 +667,16 @@ function renderHistory() {
               avatar(entry.name),
               h('strong', {}, entry.name),
               entry.butter ? h('span', { class: 'history__butter' }, pastry('p-smor'), entry.butter) : null,
+              h(
+                'button',
+                {
+                  class: `mark-cycle${entry.butter ? '' : ' mark-cycle--push'}`,
+                  type: 'button',
+                  title: 'Blev morgenmaden givet? Tryk for at skifte',
+                  onclick: () => cycleMark(entry),
+                },
+                entry.given === true ? '✅' : entry.given === false ? '❌' : '◻️',
+              ),
             ],
       ),
     ),
@@ -711,6 +730,52 @@ async function leave(person) {
     ok: 'Afmeld',
   });
   if (confirmed) report(await perform({ type: 'leave', name: person.name }));
+}
+
+function markBlock(entry) {
+  if (entry.date > state.today) return null;
+  const given = state.marks.get(entry.date);
+  if (given === undefined) {
+    return h(
+      'div',
+      { class: 'mark-row' },
+      h('span', { class: 'mark-row__q' }, 'Blev der givet morgenmad?'),
+      h('button', { class: 'mark-btn mark-btn--yes', type: 'button', onclick: (e) => setMark(entry, true, e) }, '✅ Ja'),
+      h('button', { class: 'mark-btn mark-btn--no', type: 'button', onclick: (e) => setMark(entry, false, e) }, '❌ Nej'),
+    );
+  }
+  return h(
+    'span',
+    { class: `mark-pill ${given ? 'is-given' : 'is-missed'}` },
+    given ? '✅ Givet' : '❌ Ikke givet',
+    h(
+      'button',
+      {
+        class: 'mark-pill__undo',
+        type: 'button',
+        title: 'Fjern markering',
+        'aria-label': 'Fjern markering',
+        onclick: async () => report(await perform({ type: 'mark', date: entry.date, given: null })),
+      },
+      '×',
+    ),
+  );
+}
+
+async function setMark(entry, given, event) {
+  const request = { type: 'mark', date: entry.date, given };
+  const problem = tryRequest(request).error;
+  if (problem) return report(problem);
+  if (given && event?.currentTarget) {
+    const rect = event.currentTarget.getBoundingClientRect();
+    burst(rect.left + rect.width / 2, rect.top + rect.height / 2, 20);
+  }
+  report(await perform(request));
+}
+
+async function cycleMark(entry) {
+  const given = entry.given === undefined || entry.given === null ? true : entry.given ? false : null;
+  report(await perform({ type: 'mark', date: entry.date, given }));
 }
 
 async function addButter(entry, event) {
@@ -1013,7 +1078,7 @@ function celebrate() {
 let toastTimer;
 function toast(title, text, { error = false } = {}) {
   const el = $('#toast');
-  el.replaceChildren(h('strong', {}, title), text ? h('span', {}, text) : null);
+  el.replaceChildren(...[h('strong', {}, title), text ? h('span', {}, text) : null].filter(Boolean));
   el.classList.toggle('toast--error', error);
   el.classList.remove('show');
   void el.offsetWidth;

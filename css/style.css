@@ -1077,3 +1077,64 @@ svg { display: block; }
 
 .history__butter { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; font-size: .85rem; font-weight: 700; color: var(--ink-soft); }
 .history__butter svg { width: 20px; height: 20px; }
+
+/* ---------- Blev morgenmaden givet? ---------- */
+
+.mark-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; animation: butter-pop .7s var(--spring-strong) backwards; }
+.mark-row__q { font-size: .85rem; font-weight: 700; color: var(--ink-soft); width: 100%; }
+.mark-btn {
+  appearance: none;
+  border: 2px solid var(--line-strong);
+  border-radius: 999px;
+  padding: 4px 14px;
+  background: var(--card);
+  color: var(--ink);
+  font: inherit;
+  font-weight: 800;
+  font-size: .9rem;
+  cursor: pointer;
+  transition: scale .35s var(--spring), rotate .35s var(--spring), background-color .2s;
+}
+.mark-btn:hover { scale: 1.1; rotate: -3deg; }
+.mark-btn:active { scale: .92; }
+.mark-btn--yes:hover { background: #CDEBD3; border-color: var(--pistachio); }
+.mark-btn--no:hover { background: #FBD3DA; border-color: var(--jam); }
+.mark-pill {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  padding: 3px 4px 3px 12px;
+  border-radius: 999px;
+  font-size: .85rem;
+  font-weight: 800;
+  animation: butter-pop .7s var(--spring-strong) backwards;
+}
+.mark-pill.is-given { background: #CDEBD3; border: 2px solid var(--pistachio); color: #1E4D2B; }
+.mark-pill.is-missed { background: #FBD3DA; border: 2px solid var(--jam); color: #7A1F30; }
+.mark-pill__undo {
+  appearance: none;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  line-height: 1;
+  transition: scale .3s var(--spring), background-color .2s;
+}
+.mark-pill__undo:hover { background: rgb(0 0 0 / .12); scale: 1.15; }
+.mark-cycle {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  font-size: 1.1rem;
+  cursor: pointer;
+  padding: 2px 6px;
+  margin-left: 6px;
+  transition: scale .3s var(--spring-strong);
+}
+.mark-cycle--push { margin-left: auto; }
+.mark-cycle:hover { scale: 1.3; }

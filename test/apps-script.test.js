@@ -93,9 +93,9 @@ test('tilmeld, aflys og afmeld gemmes i arket uden login', () => {
   const saved = google.get().data;
   assert.deepEqual(saved.participants.map((p) => p.name), ['Bo']);
   assert.deepEqual(plain(google.sheets.get('Plan').values.slice(0, 3)), [
-    ['Fredag', 'Morgenmad', 'Smør'],
-    ['2026-10-16', 'Aflyst – Fælles møde', ''],
-    ['2026-10-23', 'Bo', ''],
+    ['Fredag', 'Morgenmad', 'Smør', 'Givet?'],
+    ['2026-10-16', 'Aflyst – Fælles møde', '', ''],
+    ['2026-10-23', 'Bo', '', ''],
   ]);
   assert.deepEqual(plain(google.sheets.get('Log').rows.map((row) => row.slice(1, 3))), [
     ['join', 'Mette'],
@@ -127,9 +127,9 @@ test('bytning gemmes og står i loggen', () => {
     { date: '2026-10-12', a: 'Mette', b: 'Carl', aFrom: '2026-10-16', bFrom: '2026-10-30' },
   ]);
   assert.deepEqual(plain(google.sheets.get('Plan').values.slice(1, 4)), [
-    ['2026-10-16', 'Carl', ''],
-    ['2026-10-23', 'Bo', ''],
-    ['2026-10-30', 'Mette', ''],
+    ['2026-10-16', 'Carl', '', ''],
+    ['2026-10-23', 'Bo', '', ''],
+    ['2026-10-30', 'Mette', '', ''],
   ]);
   assert.deepEqual(plain(google.sheets.get('Log').rows.at(-1).slice(1, 3)), ['swap', 'Mette ⇄ Carl']);
   assert.equal(google.post({ action: 'swap', name: 'Mette', other: 'Ukendt' }).ok, false);
@@ -141,12 +141,27 @@ test('smør tilføjes, vises i planen og logges', () => {
   const added = google.post({ action: 'butter', date: '2026-10-16' });
   assert.equal(added.ok, true);
   assert.deepEqual(plain(added.data.butter), [{ date: '2026-10-16', name: 'Bo' }]);
-  assert.deepEqual(plain(google.sheets.get('Plan').values[1]), ['2026-10-16', 'Mette', 'Bo']);
+  assert.deepEqual(plain(google.sheets.get('Plan').values[1]), ['2026-10-16', 'Mette', 'Bo', '']);
   assert.deepEqual(plain(google.sheets.get('Log').rows.at(-1).slice(1, 3)), ['butter', '2026-10-16']);
 
   assert.equal(google.post({ action: 'butter', date: '2026-10-16' }).ok, false);
   assert.equal(google.post({ action: 'unbutter', date: '2026-10-16' }).ok, true);
   assert.deepEqual(plain(google.get().data.butter), []);
+});
+
+test('markering af givet morgenmad gemmes, vises i planen og flyttes til historikken', () => {
+  const google = googleSandbox({ today: '2026-10-16' });
+  assert.equal(google.get().data.anchor, '2026-10-16'); // tom liste starter med dagens fredag
+  for (const name of ['Mette', 'Bo']) google.post({ action: 'join', name });
+  assert.equal(google.post({ action: 'mark', date: '2026-10-23', given: true }).ok, false); // fremtiden
+  assert.equal(google.post({ action: 'mark', date: '2026-10-16', given: true }).ok, true);
+  assert.deepEqual(plain(google.sheets.get('Plan').values[1]), ['2026-10-16', 'Mette', '', '✅ Givet']);
+
+  const later = googleSandbox({ today: '2026-10-23' });
+  later.sheets.set('Data', google.sheets.get('Data'));
+  const data = later.post({ action: 'mark', date: '2026-10-23', given: false }).data;
+  assert.deepEqual(plain(data.history), [{ date: '2026-10-16', name: 'Mette', given: true }]);
+  assert.deepEqual(plain(data.marks), [{ date: '2026-10-23', given: false }]);
 });
 
 test('scriptet bruger dit Google Sheet', () => {

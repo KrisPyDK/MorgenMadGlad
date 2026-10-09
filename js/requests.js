@@ -17,6 +17,8 @@ const TYPES = {
   smoer: 'butter',
   'fjern smør': 'unbutter',
   'fjern smoer': 'unbutter',
+  'ikke givet': 'mark',
+  givet: 'mark',
 };
 const TRUSTED = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
 const DEFAULT_REASON = 'Ingen morgenmad';
@@ -26,7 +28,7 @@ const MAX_SWAPS = 50;
 export function requestType(title) {
   const match = String(title == null ? '' : title)
     .toLowerCase()
-    .match(/^[^a-zæøå]*(tilmeld|afmeld|aflys|genåbn|genaabn|byt|smør|smoer|fjern smør|fjern smoer)(?![a-zæøå])/);
+    .match(/^[^a-zæøå]*(tilmeld|afmeld|aflys|genåbn|genaabn|byt|smør|smoer|fjern smør|fjern smoer|ikke givet|givet)(?![a-zæøå])/);
   return match ? TYPES[match[1]] : null;
 }
 
@@ -102,6 +104,7 @@ export function parseRequest(issue, today) {
     date: parseDate(rawDate, today),
     rawDate: cleanReason(rawDate),
     reason: cleanReason(field(fields, 'grund')),
+    given: type === 'mark' ? !/^[^a-zæøå]*ikke/.test(String(issue.title).toLowerCase()) : null,
   };
 }
 
@@ -123,7 +126,7 @@ const nice = (iso) => formatDate(iso, { weekday: 'long', day: 'numeric', month: 
  *   - Man kan afmelde sig selv; ejere/collaborators kan afmelde alle.
  *   - Deltagere og ejere/collaborators kan aflyse og genåbne fredage.
  *   - Man kan bytte sin egen fredag; ejere/collaborators kan bytte alle.
- *   - Deltagere og ejere/collaborators kan tilføje og fjerne smør.
+ *   - Deltagere og ejere/collaborators kan tilføje og fjerne smør og markere om morgenmaden blev givet.
  * Med `trusted: true` (Google Sheet uden login) må alle det hele.
  */
 export function applyRequest(data, request, { today, author = '', association = 'NONE', trusted: trustAll = false }) {
@@ -218,6 +221,50 @@ export function applyRequest(data, request, { today, author = '', association = 
         message:
           `**${a.name}** og **${b.name}** har byttet! 🔁\n\n` +
           `${a.name} tager ${formatDate(bFrom)}, og ${b.name} tager ${formatDate(aFrom)}.`,
+      };
+    }
+
+    case 'mark': {
+      const { date } = request;
+      if (!trusted && !authorIsParticipant) {
+        throw new RequestError('Kun deltagere på listen eller personer med skriveadgang til repoet kan markere morgenmad.');
+      }
+      if (!date) throw new RequestError(`Jeg kunne ikke læse datoen "${request.rawDate}". Skriv den som ÅÅÅÅ-MM-DD.`);
+      if (!isFriday(date)) throw new RequestError(`${formatDate(date)} er ikke en fredag.`);
+      if (date > today) throw new RequestError('Det kan først markeres på selve fredagen.');
+      const given = typeof request.given === 'boolean' ? request.given : null;
+
+      let who;
+      let next;
+      const past = data.history.find((h) => h.date === date);
+      if (past && past.name) {
+        who = past.name;
+        next = {
+          ...data,
+          history: data.history.map((h) => {
+            if (h !== past) return h;
+            const copy = { ...h };
+            if (given === null) delete copy.given;
+            else copy.given = given;
+            return copy;
+          }),
+        };
+      } else {
+        const entry = date >= data.anchor ? upcoming(data, date, 1)[0] : null;
+        if (!entry || entry.date !== date || !entry.person) throw new RequestError('Der skulle ikke gives morgenmad den dag.');
+        who = entry.person.name;
+        const marks = (data.marks || []).filter((m) => m.date !== date);
+        if (given !== null) marks.push({ date, given });
+        next = { ...data, marks: marks.sort((a, b) => a.date.localeCompare(b.date)) };
+      }
+      return {
+        data: next,
+        message:
+          given === true
+            ? `✅ **${who}** gav morgenmad ${nice(date)}. Tak!`
+            : given === false
+              ? `❌ Der blev ikke givet morgenmad ${nice(date)}.`
+              : `Markeringen ${nice(date)} er fjernet.`,
       };
     }
 

@@ -39,6 +39,8 @@ test('requestType læser titlen', () => {
   assert.equal(requestType('🧈 Smør: 2026-10-16'), 'butter');
   assert.equal(requestType('🧈 Fjern smør: 2026-10-16'), 'unbutter');
   assert.equal(requestType('Fjern knappen'), null);
+  assert.equal(requestType('✅ Givet: 2026-10-16'), 'mark');
+  assert.equal(requestType('❌ Ikke givet: 2026-10-16'), 'mark');
   assert.equal(requestType('Aflysning af noget andet'), null);
   assert.equal(requestType('Fejl på siden'), null);
   assert.equal(requestType(undefined), null);
@@ -75,6 +77,7 @@ test('parseRequest bruger formularen og falder tilbage på titlen', () => {
     date: null,
     rawDate: 'Mette',
     reason: '',
+    given: null,
   });
   const cancel = parseRequest({ title: 'Aflys: 16/10', body: null }, today);
   assert.equal(cancel.type, 'cancel');
@@ -214,4 +217,31 @@ test('smør kan fjernes igen', () => {
   const removed = applyRequest(withButter, { type: 'unbutter', date: '2026-10-16' }, asAnna);
   assert.deepEqual(removed.data.butter, []);
   assert.throws(() => applyRequest(removed.data, { type: 'unbutter', date: '2026-10-16' }, asOwner), /ikke smør/);
+});
+
+test('markering af om morgenmaden blev givet', () => {
+  const friday = { ...asOwner, today: '2026-10-16' };
+  const yes = applyRequest(data, { type: 'mark', date: '2026-10-16', given: true }, friday);
+  assert.deepEqual(yes.data.marks, [{ date: '2026-10-16', given: true }]);
+  assert.match(yes.message, /Anna\*\* gav morgenmad/);
+
+  const no = applyRequest(yes.data, { type: 'mark', date: '2026-10-16', given: false }, friday);
+  assert.deepEqual(no.data.marks, [{ date: '2026-10-16', given: false }]);
+  assert.match(no.message, /ikke givet/);
+  assert.deepEqual(applyRequest(no.data, { type: 'mark', date: '2026-10-16', given: null }, friday).data.marks, []);
+
+  assert.throws(() => applyRequest(data, { type: 'mark', date: '2026-10-23', given: true }, friday), /først markeres på selve fredagen/);
+  assert.throws(() => applyRequest(data, { type: 'mark', date: '2026-10-15', given: true }, friday), /ikke en fredag/);
+  assert.throws(() => applyRequest(data, { type: 'mark', date: '2026-10-09', given: true }, friday), /ikke gives morgenmad/);
+  assert.throws(() => applyRequest(data, { type: 'mark', date: '2026-10-16', given: true }, { ...asStranger, today: '2026-10-16' }), /Kun deltagere/);
+
+  const issue = parseRequest({ title: '❌ Ikke givet: 2026-10-16', body: '' }, today);
+  assert.deepEqual([issue.type, issue.given, issue.date], ['mark', false, '2026-10-16']);
+  assert.equal(parseRequest({ title: '✅ Givet: 16/10', body: '' }, today).given, true);
+});
+
+test('markering kan rettes bagefter i historikken', () => {
+  const withHistory = { ...data, history: [{ date: '2026-10-09', name: 'Dorte', given: true }] };
+  const changed = applyRequest(withHistory, { type: 'mark', date: '2026-10-09', given: false }, { ...asOwner, today: '2026-10-16' });
+  assert.deepEqual(changed.data.history, [{ date: '2026-10-09', name: 'Dorte', given: false }]);
 });
