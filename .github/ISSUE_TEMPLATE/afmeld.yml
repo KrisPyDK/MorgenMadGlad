@@ -1,0 +1,15 @@
+name: 👋 Afmeld
+description: Tag et navn af morgenmadslisten.
+title: "👋 Afmeld: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Du kan afmelde dig selv. Ejere og collaborators på repoet kan afmelde alle.
+  - type: input
+    id: navn
+    attributes:
+      label: Navn
+      description: Navnet præcis som det står på listen.
+    validations:
+      required: true

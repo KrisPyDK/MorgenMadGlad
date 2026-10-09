@@ -1,0 +1,11 @@
+name: 🎉 Genåbn en aflyst fredag
+description: Fortryd en aflysning – så rykker listen en uge tilbage igen.
+title: "🎉 Genåbn: "
+body:
+  - type: input
+    id: fredag
+    attributes:
+      label: Fredag (ÅÅÅÅ-MM-DD)
+      placeholder: "2026-10-23"
+    validations:
+      required: true

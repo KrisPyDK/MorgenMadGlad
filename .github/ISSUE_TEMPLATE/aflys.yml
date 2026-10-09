@@ -1,0 +1,20 @@
+name: 😴 Aflys en fredag
+description: Ingen morgenmad den fredag – alle på listen rykker en uge.
+title: "😴 Aflys: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Fælles møde, helligdag eller andet? Den der skulle have haft tur, rykker til fredagen efter – og resten af listen rykker med.
+  - type: input
+    id: fredag
+    attributes:
+      label: Fredag (ÅÅÅÅ-MM-DD)
+      placeholder: "2026-10-23"
+    validations:
+      required: true
+  - type: input
+    id: grund
+    attributes:
+      label: Grund
+      placeholder: Fælles møde

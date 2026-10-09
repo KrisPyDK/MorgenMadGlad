@@ -1,0 +1,66 @@
+name: Morgenmad
+
+on:
+  push:
+  issues:
+    types: [opened, reopened]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+  pages: write
+  id-token: write
+
+# Kør én ad gangen, så to anmodninger ikke overskriver hinanden.
+concurrency:
+  group: morgenmad
+  cancel-in-progress: false
+
+jobs:
+  requests:
+    name: Behandl anmodninger
+    if: github.event_name != 'push'
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.process.outputs.changed }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+      - id: process
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const { default: run } = await import(`${process.env.GITHUB_WORKSPACE}/scripts/process-requests.js`);
+            await run({ github, context, core });
+
+  deploy:
+    name: Udgiv siden
+    needs: requests
+    if: >-
+      always() && !failure() && !cancelled() && (
+        (github.event_name == 'push' && github.ref_name == github.event.repository.default_branch) ||
+        github.event_name == 'workflow_dispatch' ||
+        needs.requests.outputs.changed == 'true'
+      )
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+      - name: Test
+        run: npm test
+      - name: Saml siden
+        run: |
+          mkdir _site
+          cp -r index.html data.json css js _site/
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v4

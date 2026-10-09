@@ -1,0 +1,10 @@
+{
+  "name": "morgenmadglad",
+  "private": true,
+  "type": "module",
+  "description": "Hvem tager morgenbrød med på fredag?",
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "start": "npx --yes http-server -c-1 -p 8080 ."
+  }
+}

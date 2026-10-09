@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="da">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MorgenMadGlad</title>
+  <meta name="description" content="Hvem tager morgenbrød med på fredag? Tilmeld dig fredagsmorgenmaden.">
+  <meta name="theme-color" content="#E04F67">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🥐</text></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito:wght@400;600;700;800&display=swap">
+  <link rel="stylesheet" href="css/style.css">
+  <script type="module" src="js/app.js"></script>
+</head>
+<body>
+  <!-- Wienerbrød-sprite: genbruges med <use href="#p-..."> -->
+  <svg class="sprite" aria-hidden="true" focusable="false">
+    <defs>
+      <linearGradient id="g-crust" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#F7C66B"/>
+        <stop offset="1" stop-color="#D07C2E"/>
+      </linearGradient>
+      <linearGradient id="g-roll" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#EFB772"/>
+        <stop offset="1" stop-color="#C4752F"/>
+      </linearGradient>
+      <linearGradient id="g-gold" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="#FFD465"/>
+        <stop offset="1" stop-color="#E59B21"/>
+      </linearGradient>
+    </defs>
+
+    <symbol id="p-kanelsnegl" viewBox="0 0 100 100">
+      <ellipse cx="50" cy="56" rx="44" ry="36" fill="#A85A22"/>
+      <ellipse cx="50" cy="50" rx="44" ry="36" fill="#E8A65E" stroke="#A85A22" stroke-width="3"/>
+      <path d="M50 50a4 4 0 0 1 8 0a8 8 0 0 1-16 0a12 12 0 0 1 24 0a16 16 0 0 1-32 0a20 20 0 0 1 40 0a24 24 0 0 1-48 0a28 28 0 0 1 56 0" fill="none" stroke="#9B4E1D" stroke-width="5" stroke-linecap="round" transform="matrix(1 0 0 .8 -4 10)"/>
+      <path d="M20 42l12-9-2 16 15-12-1 18 16-14-1 17 15-12" fill="none" stroke="#FFF9F0" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
+      <ellipse cx="33" cy="26" rx="10" ry="3.5" fill="#fff" opacity=".35" transform="rotate(-16 33 26)"/>
+    </symbol>
+
+    <symbol id="p-croissant" viewBox="0 0 100 100">
+      <g fill="url(#g-crust)" stroke="#A2561D" stroke-width="2.5">
+        <ellipse cx="16" cy="64" rx="9" ry="13" transform="rotate(-52 16 64)"/>
+        <ellipse cx="84" cy="64" rx="9" ry="13" transform="rotate(52 84 64)"/>
+        <ellipse cx="30" cy="55" rx="13" ry="19" transform="rotate(-30 30 55)"/>
+        <ellipse cx="70" cy="55" rx="13" ry="19" transform="rotate(30 70 55)"/>
+        <ellipse cx="50" cy="50" rx="17" ry="25"/>
+      </g>
+      <path d="M44 35q6-4 12 0M42 49q8-5 16 0M44 63q6-3 12 0M25 49q4-3 8 1M67 50q4-4 8-1" fill="none" stroke="#FFE2A8" stroke-width="2.5" stroke-linecap="round" opacity=".85"/>
+    </symbol>
+
+    <symbol id="p-spandauer" viewBox="0 0 100 100">
+      <rect x="17" y="19" width="66" height="66" rx="20" transform="rotate(45 50 52)" fill="#A85A22"/>
+      <rect x="17" y="15" width="66" height="66" rx="20" transform="rotate(45 50 48)" fill="url(#g-crust)" stroke="#A2561D" stroke-width="3"/>
+      <path d="M50 13v14M50 69v14M15 48h14M71 48h14" stroke="#B9692A" stroke-width="3" stroke-linecap="round" opacity=".7"/>
+      <circle cx="50" cy="48" r="19" fill="#F2AE25"/>
+      <circle cx="50" cy="48" r="15" fill="#FFD95A"/>
+      <ellipse cx="45" cy="42" rx="5" ry="3" fill="#FFF6CF" opacity=".9"/>
+      <path d="M27 32q9 5 5 14M73 32q-9 5-5 14M30 68q8-5 14 1M70 68q-8-5-14 1" stroke="#FFF9F0" stroke-width="4" fill="none" stroke-linecap="round"/>
+    </symbol>
+
+    <symbol id="p-rundstykke" viewBox="0 0 100 100">
+      <ellipse cx="50" cy="61" rx="42" ry="27" fill="#A85A22"/>
+      <ellipse cx="50" cy="55" rx="42" ry="29" fill="url(#g-roll)" stroke="#A2561D" stroke-width="3"/>
+      <path d="M27 52q23-13 46 0" stroke="#B0612A" stroke-width="4" fill="none" stroke-linecap="round"/>
+      <g fill="#3B2A22">
+        <ellipse cx="30" cy="40" rx="1.6" ry="1.1"/><ellipse cx="37" cy="35" rx="1.6" ry="1.1"/>
+        <ellipse cx="45" cy="32" rx="1.6" ry="1.1"/><ellipse cx="53" cy="31" rx="1.6" ry="1.1"/>
+        <ellipse cx="61" cy="33" rx="1.6" ry="1.1"/><ellipse cx="68" cy="37" rx="1.6" ry="1.1"/>
+        <ellipse cx="41" cy="40" rx="1.6" ry="1.1"/><ellipse cx="49" cy="38" rx="1.6" ry="1.1"/>
+        <ellipse cx="57" cy="39" rx="1.6" ry="1.1"/><ellipse cx="34" cy="45" rx="1.6" ry="1.1"/>
+        <ellipse cx="65" cy="44" rx="1.6" ry="1.1"/><ellipse cx="74" cy="43" rx="1.6" ry="1.1"/>
+        <ellipse cx="25" cy="47" rx="1.6" ry="1.1"/><ellipse cx="52" cy="44" rx="1.6" ry="1.1"/>
+      </g>
+      <ellipse cx="38" cy="33" rx="11" ry="4" fill="#fff" opacity=".28" transform="rotate(-12 38 33)"/>
+    </symbol>
+
+    <symbol id="p-kringle" viewBox="0 0 100 100">
+      <g fill="none" stroke-linejoin="round">
+        <path d="M28 64C40 54 58 44 66 32C74 18 90 26 88 44C86 66 68 82 50 82C32 82 14 66 12 44C10 26 26 18 34 32C42 44 60 54 72 64" stroke="#A86416" stroke-width="17" stroke-linecap="round"/>
+        <path d="M28 64C40 54 58 44 66 32C74 18 90 26 88 44C86 66 68 82 50 82C32 82 14 66 12 44C10 26 26 18 34 32C42 44 60 54 72 64" stroke="url(#g-gold)" stroke-width="11" stroke-linecap="round"/>
+        <!-- armen der ligger øverst i krydset -->
+        <path d="M34 32C42 44 60 54 72 64" pathLength="100" stroke="#A86416" stroke-width="17" stroke-dasharray="0 22 52 100"/>
+        <path d="M34 32C42 44 60 54 72 64" pathLength="100" stroke="url(#g-gold)" stroke-width="11" stroke-dasharray="0 21 54 100"/>
+        <path d="M28 64C40 54 58 44 66 32C74 18 90 26 88 44C86 66 68 82 50 82C32 82 14 66 12 44C10 26 26 18 34 32C42 44 60 54 72 64" stroke="#FFF0B8" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="5 16" opacity=".9"/>
+      </g>
+    </symbol>
+  </svg>
+
+  <div class="bg-pastries" id="bg-pastries" aria-hidden="true"></div>
+
+  <header class="shop">
+    <div class="awning" aria-hidden="true"></div>
+    <div class="sign" aria-hidden="true">
+      <span class="sign__string sign__string--l"></span>
+      <span class="sign__string sign__string--r"></span>
+      <svg class="sign__kringle"><use href="#p-kringle"/></svg>
+    </div>
+    <h1 class="title" id="title" aria-label="MorgenMadGlad">
+      <span class="title__word" data-word="Morgen"></span><span class="title__word" data-word="Mad"></span><span class="title__word" data-word="Glad"></span>
+    </h1>
+    <p class="tagline">Hvem tager morgenbrød med på fredag?</p>
+  </header>
+
+  <main class="page">
+    <section class="card next" id="next" aria-live="polite">
+      <div class="next__plate">
+        <button class="next__pastry" id="next-pastry" type="button" aria-label="Fejr fredagen">
+          <svg><use href="#p-spandauer"/></svg>
+        </button>
+        <span class="steam" aria-hidden="true"><i></i><i></i><i></i></span>
+      </div>
+      <div class="next__body">
+        <p class="eyebrow" id="next-eyebrow">Henter listen…</p>
+        <h2 class="next__name" id="next-name"><span class="loader"><svg><use href="#p-kanelsnegl"/></svg></span></h2>
+        <p class="next__date" id="next-date"></p>
+        <div class="oven" id="oven" hidden>
+          <div class="oven__bar"><span class="oven__fill" id="oven-fill"></span></div>
+          <span class="oven__label" id="oven-label"></span>
+        </div>
+        <p class="next__note" id="next-note" hidden></p>
+      </div>
+    </section>
+
+    <div class="grid">
+      <section class="card plan" id="plan" aria-labelledby="plan-title">
+        <div class="card__head">
+          <h2 id="plan-title">Fredagsplanen</h2>
+          <p class="muted">Fælles møde eller helligdag? Aflys fredagen, så rykker alle en uge.</p>
+        </div>
+        <ol class="fridays" id="fridays"></ol>
+        <button class="btn btn--soft btn--block" id="more" type="button" hidden>Vis flere fredage</button>
+      </section>
+
+      <div class="stack">
+        <section class="card join" id="tilmeld" aria-labelledby="join-title">
+          <svg class="join__deco" aria-hidden="true"><use href="#p-croissant"/></svg>
+          <h2 id="join-title">Tilmeld dig</h2>
+          <p class="muted">Du kommer bagerst i køen og får besked om, hvornår det er din tur.</p>
+          <form class="join__form" id="join-form" novalidate>
+            <label class="sr-only" for="join-name">Dit navn</label>
+            <input class="input" id="join-name" name="navn" maxlength="40" autocomplete="name" placeholder="Dit navn, f.eks. Mette" required>
+            <button class="btn btn--primary" type="submit">Tilmeld mig</button>
+          </form>
+          <p class="field-error" id="join-error" role="alert" hidden></p>
+        </section>
+
+        <section class="card team" aria-labelledby="team-title">
+          <div class="card__head card__head--row">
+            <h2 id="team-title">Bagerholdet</h2>
+            <span class="count" id="team-count">0</span>
+          </div>
+          <ul class="team__list" id="team"></ul>
+        </section>
+
+        <section class="card how" aria-labelledby="how-title">
+          <h2 id="how-title">Sådan virker det</h2>
+          <ol class="how__steps">
+            <li><svg aria-hidden="true"><use href="#p-croissant"/></svg><span><b>Tilmeld dig</b> – du kommer bagerst i rotationen.</span></li>
+            <li><svg aria-hidden="true"><use href="#p-spandauer"/></svg><span><b>Hver fredag</b> tager den næste på listen morgenbrød med.</span></li>
+            <li><svg aria-hidden="true"><use href="#p-kanelsnegl"/></svg><span><b>Ingen morgenmad?</b> Aflys fredagen – så rykker alle en uge.</span></li>
+          </ol>
+          <p class="muted small">Knapperne åbner et GitHub-issue, som du bare trykker <b>Create</b> på. Robotten opdaterer listen på cirka et minut.</p>
+        </section>
+      </div>
+    </div>
+
+    <section class="card history" aria-labelledby="history-title">
+      <details>
+        <summary><h2 id="history-title">Tidligere fredage</h2><span class="chev" aria-hidden="true"></span></summary>
+        <ol class="history__list" id="history"></ol>
+      </details>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <p>Bagt med smør, sukker og GitHub Actions · <a id="repo-link" href="https://github.com/KrisPyDK/MorgenMadGlad">Se koden</a></p>
+  </footer>
+
+  <dialog class="dialog" id="cancel-dialog" aria-labelledby="cancel-title">
+    <form class="dialog__form" id="cancel-form">
+      <div class="dialog__art" aria-hidden="true">
+        <svg><use href="#p-croissant"/></svg>
+        <span class="zzz"><i>z</i><i>z</i><i>z</i></span>
+      </div>
+      <h3 id="cancel-title">Ingen morgenmad?</h3>
+      <p class="dialog__effect" id="cancel-effect"></p>
+      <fieldset class="reasons">
+        <legend class="sr-only">Hvorfor?</legend>
+        <button type="button" class="reason" data-reason="Fælles møde">Fælles møde</button>
+        <button type="button" class="reason" data-reason="Helligdag">Helligdag</button>
+        <button type="button" class="reason" data-reason="Ferie">Ferie</button>
+        <button type="button" class="reason" data-reason="Firmaarrangement">Firmaarrangement</button>
+      </fieldset>
+      <label class="sr-only" for="cancel-reason">Grund</label>
+      <input class="input" id="cancel-reason" maxlength="80" placeholder="Eller skriv en grund (valgfri)">
+      <div class="dialog__actions">
+        <button type="button" class="btn btn--soft" data-close>Fortryd</button>
+        <button type="submit" class="btn btn--jam">Aflys fredagen</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <div class="fx" id="fx" aria-hidden="true"></div>
+</body>
+</html>

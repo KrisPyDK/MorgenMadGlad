@@ -1,0 +1,16 @@
+name: 🥐 Tilmeld mig
+description: Skriv dig på listen over hvem der tager morgenbrød med om fredagen.
+title: "🥐 Tilmeld: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Tryk bare på **Create** nederst – så skriver morgenmadsrobotten dig bagerst på listen i løbet af et minut. 🥐
+  - type: input
+    id: navn
+    attributes:
+      label: Navn
+      description: Det navn der skal stå på listen.
+      placeholder: f.eks. Mette
+    validations:
+      required: true
