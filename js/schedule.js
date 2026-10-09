@@ -19,7 +19,7 @@
 
 export const TIME_ZONE = 'Europe/Copenhagen';
 
-const DAY = 86_400_000;
+const DAY = 86400000;
 const FRIDAY = 5;
 const MAX_HISTORY = 104;
 
@@ -109,7 +109,7 @@ export function* fridays(data) {
   for (let date = data.anchor; ; date = addDays(date, 7)) {
     const cancellation = cancelled.get(date);
     if (cancellation) {
-      yield { date, cancelled: true, reason: cancellation.reason, turn, postponed: people[turn % people.length] ?? null };
+      yield { date, cancelled: true, reason: cancellation.reason, turn, postponed: people[turn % people.length] || null };
     } else if (people.length) {
       yield { date, person: people[turn % people.length], turn };
       turn++;
@@ -206,7 +206,7 @@ export function lastButter(data) {
     if (name && !(last.get(name) >= date)) last.set(name, date);
   };
   for (const entry of data.history) note(entry.butter, entry.date);
-  for (const entry of data.butter ?? []) note(entry.name, entry.date);
+  for (const entry of data.butter || []) note(entry.name, entry.date);
   return last;
 }
 
@@ -217,8 +217,8 @@ export function lastButter(data) {
  */
 export function pickButter(data, last, breakfastName) {
   const candidates = data.participants.map((p) => p.name).filter((name) => name !== breakfastName);
-  candidates.sort((a, b) => (last.get(a) ?? '').localeCompare(last.get(b) ?? ''));
-  return candidates[0] ?? null;
+  candidates.sort((a, b) => (last.get(a) || '').localeCompare(last.get(b) || ''));
+  return candidates[0] || null;
 }
 
 /**
@@ -228,7 +228,7 @@ export function pickButter(data, last, breakfastName) {
  * dag (efter en bytning eller aflysning), vælges en ny.
  */
 export function butterPlan(data) {
-  const requests = (data.butter ?? []).filter((b) => b.date >= data.anchor);
+  const requests = (data.butter || []).filter((b) => b.date >= data.anchor);
   if (!requests.length) return [];
   const names = new Set(data.participants.map((p) => p.name));
   const last = lastButter(data);
@@ -239,9 +239,9 @@ export function butterPlan(data) {
     if (entry.cancelled || entry.date < requests[i].date) continue;
     const group = [];
     while (i < requests.length && requests[i].date <= entry.date) group.push(requests[i++]);
-    const breakfast = entry.person?.name ?? null;
-    const chosen = group.find((r) => names.has(r.name) && r.name !== breakfast)?.name;
-    const name = chosen ?? pickButter(data, last, breakfast);
+    const breakfast = entry.person ? entry.person.name : null;
+    const found = group.find((r) => names.has(r.name) && r.name !== breakfast);
+    const name = found ? found.name : pickButter(data, last, breakfast);
     if (name && !(last.get(name) >= entry.date)) last.set(name, entry.date);
     plan.push({ date: entry.date, name, breakfast, requests: group });
   }

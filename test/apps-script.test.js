@@ -60,6 +60,14 @@ test('Code.gs er bygget ud fra den nyeste kode (kør "npm run build")', () => {
   assert.doesNotMatch(code, /^\s*(import|export)\s/m);
 });
 
+test('Code.gs bruger kun syntaks som Googles editor accepterer', () => {
+  // Editorens parser er ældre end selve V8-runtime: ingen talseparatorer (1_000) og ingen "catch {" uden variabel.
+  assert.doesNotMatch(code, /\d_\d/);
+  assert.doesNotMatch(code, /catch\s*\{/);
+  assert.doesNotMatch(code, /\?\?|\?\.[A-Za-z(\[]/, 'brug ikke ?? eller ?.');
+  assert.doesNotMatch(code, /\\p\{/, 'brug ikke unicode-egenskaber i regex');
+});
+
 test('tom liste starter næste fredag', () => {
   const google = googleSandbox();
   assert.deepEqual(google.get(), { ok: true, data: { anchor: '2026-10-16', participants: [], cancelled: [], history: [] } });

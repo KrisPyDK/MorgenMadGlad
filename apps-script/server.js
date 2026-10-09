@@ -62,7 +62,7 @@ function doPost(e) {
 function parseBody_(e) {
   try {
     return JSON.parse((e && e.postData && e.postData.contents) || '{}') || {};
-  } catch {
+  } catch (_) {
     return {};
   }
 }
@@ -93,7 +93,7 @@ function readData_(today) {
   if (!text) return { anchor: fridayOnOrAfter(addDays(today, 1)), participants: [], cancelled: [], history: [] };
   try {
     return JSON.parse(text);
-  } catch {
+  } catch (_) {
     throw new Error('Celle A1 i arket "Data" indeholder ikke gyldig JSON.');
   }
 }

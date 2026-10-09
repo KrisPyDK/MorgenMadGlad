@@ -16,9 +16,9 @@ import {
 const PASTRIES = ['p-kanelsnegl', 'p-croissant', 'p-spandauer', 'p-rundstykke', 'p-kringle'];
 const AVATAR_COLORS = ['#E04F67', '#C8742E', '#6FB47F', '#6C7FD8', '#D9A21B', '#B05FC4', '#2FA7A0', '#E0742E'];
 const CRUMB_COLORS = ['#D9944A', '#F2B441', '#B5652A', '#FFD95A', '#FFF3DF', '#E04F67'];
-const POLL_INTERVAL = 15_000;
+const POLL_INTERVAL = 15000;
 const POLL_ATTEMPTS = 24;
-const REFRESH_INTERVAL = 60_000;
+const REFRESH_INTERVAL = 60000;
 
 const $ = (selector) => document.querySelector(selector);
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');

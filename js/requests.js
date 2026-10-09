@@ -24,9 +24,9 @@ const MAX_SWAPS = 50;
 
 /** Finder handlingen ud fra titlen, f.eks. "🥐 Tilmeld: Mette" -> "join". */
 export function requestType(title) {
-  const match = String(title ?? '')
+  const match = String(title == null ? '' : title)
     .toLowerCase()
-    .match(/^[^\p{L}]*(tilmeld|afmeld|aflys|genåbn|genaabn|byt|smør|smoer|fjern smør|fjern smoer)(?!\p{L})/u);
+    .match(/^[^a-zæøå]*(tilmeld|afmeld|aflys|genåbn|genaabn|byt|smør|smoer|fjern smør|fjern smoer)(?![a-zæøå])/);
   return match ? TYPES[match[1]] : null;
 }
 
@@ -34,7 +34,7 @@ export function requestType(title) {
 export function parseIssueForm(body) {
   const sections = {};
   let key = null;
-  for (const line of String(body ?? '').split(/\r?\n/)) {
+  for (const line of String(body == null ? '' : body).split(/\r?\n/)) {
     const heading = line.match(/^###\s+(.*?)\s*$/);
     if (heading) {
       key = heading[1].toLowerCase();
@@ -51,10 +51,10 @@ export function parseIssueForm(body) {
   );
 }
 
-const field = (fields, prefix) => Object.entries(fields).find(([name]) => name.startsWith(prefix))?.[1] ?? '';
+const field = (fields, prefix) => (Object.entries(fields).find(([name]) => name.startsWith(prefix)) || [])[1] || '';
 
 export function cleanName(value) {
-  return String(value ?? '')
+  return String(value == null ? '' : value)
     .replace(/[\u0000-\u001f<>`*_[\]#@\\|~]/g, '')
     .replace(/\s+/g, ' ')
     .trim()
@@ -62,7 +62,7 @@ export function cleanName(value) {
 }
 
 export function cleanReason(value) {
-  return String(value ?? '')
+  return String(value == null ? '' : value)
     .replace(/[\u0000-\u001f<>`@\\|]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
@@ -71,7 +71,7 @@ export function cleanReason(value) {
 
 /** Accepterer 2026-10-16, 16-10-2026, 16.10.2026, 16/10/2026 og 16/10. */
 export function parseDate(value, today) {
-  const text = String(value ?? '');
+  const text = String(value == null ? '' : value);
   const pad = (n) => n.padStart(2, '0');
   let match;
   let iso = null;
@@ -179,7 +179,7 @@ export function applyRequest(data, request, { today, author = '', association = 
           cancelled: [...data.cancelled, { date, reason }].sort((a, b) => a.date.localeCompare(b.date)),
         };
         let message = `Ingen morgenmad **${nice(date)}** (${reason}). 😴`;
-        if (before?.person) {
+        if (before && before.person) {
           const moved = nextDates(next, date).get(before.person.name);
           message += `\n\n**${before.person.name}** rykker til ${formatDate(moved)}, og resten af listen rykker en uge med.`;
         }
@@ -193,7 +193,7 @@ export function applyRequest(data, request, { today, author = '', association = 
         data: next,
         message:
           `${nice(date)} er genåbnet! 🎉` +
-          (entry?.person ? `\n\n**${entry.person.name}** står for morgenmaden, og listen rykker en uge tilbage.` : ''),
+          (entry && entry.person ? `\n\n**${entry.person.name}** står for morgenmaden, og listen rykker en uge tilbage.` : ''),
       };
     }
 
@@ -214,7 +214,7 @@ export function applyRequest(data, request, { today, author = '', association = 
       const participants = data.participants.map((p) => (p === a ? b : p === b ? a : p));
       const swap = { date: today, a: a.name, b: b.name, aFrom, bFrom };
       return {
-        data: { ...data, participants, swaps: [...(data.swaps ?? []), swap].slice(-MAX_SWAPS) },
+        data: { ...data, participants, swaps: [...(data.swaps || []), swap].slice(-MAX_SWAPS) },
         message:
           `**${a.name}** og **${b.name}** har byttet! 🔁\n\n` +
           `${a.name} tager ${formatDate(bFrom)}, og ${b.name} tager ${formatDate(aFrom)}.`,
@@ -245,7 +245,8 @@ export function applyRequest(data, request, { today, author = '', association = 
       if (data.cancelled.some((c) => c.date === date)) throw new RequestError(`${nice(date)} er aflyst.`);
       if (item) throw new RequestError(`**${item.name}** tager allerede smør med ${nice(date)}.`);
 
-      const breakfast = upcoming(data, date, 1)[0]?.person?.name ?? null;
+      const first = upcoming(data, date, 1)[0];
+      const breakfast = first && first.person ? first.person.name : null;
       const last = lastButter({ ...data, butter: plan.map((p) => ({ date: p.date, name: p.name })) });
       const name = pickButter(data, last, breakfast);
       return {

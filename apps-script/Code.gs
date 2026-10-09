@@ -28,7 +28,7 @@
 
 const TIME_ZONE = 'Europe/Copenhagen';
 
-const DAY = 86_400_000;
+const DAY = 86400000;
 const FRIDAY = 5;
 const MAX_HISTORY = 104;
 
@@ -118,7 +118,7 @@ function* fridays(data) {
   for (let date = data.anchor; ; date = addDays(date, 7)) {
     const cancellation = cancelled.get(date);
     if (cancellation) {
-      yield { date, cancelled: true, reason: cancellation.reason, turn, postponed: people[turn % people.length] ?? null };
+      yield { date, cancelled: true, reason: cancellation.reason, turn, postponed: people[turn % people.length] || null };
     } else if (people.length) {
       yield { date, person: people[turn % people.length], turn };
       turn++;
@@ -215,7 +215,7 @@ function lastButter(data) {
     if (name && !(last.get(name) >= date)) last.set(name, date);
   };
   for (const entry of data.history) note(entry.butter, entry.date);
-  for (const entry of data.butter ?? []) note(entry.name, entry.date);
+  for (const entry of data.butter || []) note(entry.name, entry.date);
   return last;
 }
 
@@ -226,8 +226,8 @@ function lastButter(data) {
  */
 function pickButter(data, last, breakfastName) {
   const candidates = data.participants.map((p) => p.name).filter((name) => name !== breakfastName);
-  candidates.sort((a, b) => (last.get(a) ?? '').localeCompare(last.get(b) ?? ''));
-  return candidates[0] ?? null;
+  candidates.sort((a, b) => (last.get(a) || '').localeCompare(last.get(b) || ''));
+  return candidates[0] || null;
 }
 
 /**
@@ -237,7 +237,7 @@ function pickButter(data, last, breakfastName) {
  * dag (efter en bytning eller aflysning), vælges en ny.
  */
 function butterPlan(data) {
-  const requests = (data.butter ?? []).filter((b) => b.date >= data.anchor);
+  const requests = (data.butter || []).filter((b) => b.date >= data.anchor);
   if (!requests.length) return [];
   const names = new Set(data.participants.map((p) => p.name));
   const last = lastButter(data);
@@ -248,9 +248,9 @@ function butterPlan(data) {
     if (entry.cancelled || entry.date < requests[i].date) continue;
     const group = [];
     while (i < requests.length && requests[i].date <= entry.date) group.push(requests[i++]);
-    const breakfast = entry.person?.name ?? null;
-    const chosen = group.find((r) => names.has(r.name) && r.name !== breakfast)?.name;
-    const name = chosen ?? pickButter(data, last, breakfast);
+    const breakfast = entry.person ? entry.person.name : null;
+    const found = group.find((r) => names.has(r.name) && r.name !== breakfast);
+    const name = found ? found.name : pickButter(data, last, breakfast);
     if (name && !(last.get(name) >= entry.date)) last.set(name, entry.date);
     plan.push({ date: entry.date, name, breakfast, requests: group });
   }
@@ -284,9 +284,9 @@ const MAX_SWAPS = 50;
 
 /** Finder handlingen ud fra titlen, f.eks. "🥐 Tilmeld: Mette" -> "join". */
 function requestType(title) {
-  const match = String(title ?? '')
+  const match = String(title == null ? '' : title)
     .toLowerCase()
-    .match(/^[^\p{L}]*(tilmeld|afmeld|aflys|genåbn|genaabn|byt|smør|smoer|fjern smør|fjern smoer)(?!\p{L})/u);
+    .match(/^[^a-zæøå]*(tilmeld|afmeld|aflys|genåbn|genaabn|byt|smør|smoer|fjern smør|fjern smoer)(?![a-zæøå])/);
   return match ? TYPES[match[1]] : null;
 }
 
@@ -294,7 +294,7 @@ function requestType(title) {
 function parseIssueForm(body) {
   const sections = {};
   let key = null;
-  for (const line of String(body ?? '').split(/\r?\n/)) {
+  for (const line of String(body == null ? '' : body).split(/\r?\n/)) {
     const heading = line.match(/^###\s+(.*?)\s*$/);
     if (heading) {
       key = heading[1].toLowerCase();
@@ -311,10 +311,10 @@ function parseIssueForm(body) {
   );
 }
 
-const field = (fields, prefix) => Object.entries(fields).find(([name]) => name.startsWith(prefix))?.[1] ?? '';
+const field = (fields, prefix) => (Object.entries(fields).find(([name]) => name.startsWith(prefix)) || [])[1] || '';
 
 function cleanName(value) {
-  return String(value ?? '')
+  return String(value == null ? '' : value)
     .replace(/[\u0000-\u001f<>`*_[\]#@\\|~]/g, '')
     .replace(/\s+/g, ' ')
     .trim()
@@ -322,7 +322,7 @@ function cleanName(value) {
 }
 
 function cleanReason(value) {
-  return String(value ?? '')
+  return String(value == null ? '' : value)
     .replace(/[\u0000-\u001f<>`@\\|]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
@@ -331,7 +331,7 @@ function cleanReason(value) {
 
 /** Accepterer 2026-10-16, 16-10-2026, 16.10.2026, 16/10/2026 og 16/10. */
 function parseDate(value, today) {
-  const text = String(value ?? '');
+  const text = String(value == null ? '' : value);
   const pad = (n) => n.padStart(2, '0');
   let match;
   let iso = null;
@@ -439,7 +439,7 @@ function applyRequest(data, request, { today, author = '', association = 'NONE',
           cancelled: [...data.cancelled, { date, reason }].sort((a, b) => a.date.localeCompare(b.date)),
         };
         let message = `Ingen morgenmad **${nice(date)}** (${reason}). 😴`;
-        if (before?.person) {
+        if (before && before.person) {
           const moved = nextDates(next, date).get(before.person.name);
           message += `\n\n**${before.person.name}** rykker til ${formatDate(moved)}, og resten af listen rykker en uge med.`;
         }
@@ -453,7 +453,7 @@ function applyRequest(data, request, { today, author = '', association = 'NONE',
         data: next,
         message:
           `${nice(date)} er genåbnet! 🎉` +
-          (entry?.person ? `\n\n**${entry.person.name}** står for morgenmaden, og listen rykker en uge tilbage.` : ''),
+          (entry && entry.person ? `\n\n**${entry.person.name}** står for morgenmaden, og listen rykker en uge tilbage.` : ''),
       };
     }
 
@@ -474,7 +474,7 @@ function applyRequest(data, request, { today, author = '', association = 'NONE',
       const participants = data.participants.map((p) => (p === a ? b : p === b ? a : p));
       const swap = { date: today, a: a.name, b: b.name, aFrom, bFrom };
       return {
-        data: { ...data, participants, swaps: [...(data.swaps ?? []), swap].slice(-MAX_SWAPS) },
+        data: { ...data, participants, swaps: [...(data.swaps || []), swap].slice(-MAX_SWAPS) },
         message:
           `**${a.name}** og **${b.name}** har byttet! 🔁\n\n` +
           `${a.name} tager ${formatDate(bFrom)}, og ${b.name} tager ${formatDate(aFrom)}.`,
@@ -505,7 +505,8 @@ function applyRequest(data, request, { today, author = '', association = 'NONE',
       if (data.cancelled.some((c) => c.date === date)) throw new RequestError(`${nice(date)} er aflyst.`);
       if (item) throw new RequestError(`**${item.name}** tager allerede smør med ${nice(date)}.`);
 
-      const breakfast = upcoming(data, date, 1)[0]?.person?.name ?? null;
+      const first = upcoming(data, date, 1)[0];
+      const breakfast = first && first.person ? first.person.name : null;
       const last = lastButter({ ...data, butter: plan.map((p) => ({ date: p.date, name: p.name })) });
       const name = pickButter(data, last, breakfast);
       return {
@@ -587,7 +588,7 @@ function doPost(e) {
 function parseBody_(e) {
   try {
     return JSON.parse((e && e.postData && e.postData.contents) || '{}') || {};
-  } catch {
+  } catch (_) {
     return {};
   }
 }
@@ -618,7 +619,7 @@ function readData_(today) {
   if (!text) return { anchor: fridayOnOrAfter(addDays(today, 1)), participants: [], cancelled: [], history: [] };
   try {
     return JSON.parse(text);
-  } catch {
+  } catch (_) {
     throw new Error('Celle A1 i arket "Data" indeholder ikke gyldig JSON.');
   }
 }
