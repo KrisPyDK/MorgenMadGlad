@@ -1,6 +1,7 @@
 import { config } from './config.js';
 import { RequestError, applyRequest, cleanName } from './requests.js';
 import {
+  butterPlan,
   daysBetween,
   formatDate,
   isoWeek,
@@ -242,6 +243,9 @@ async function save(request) {
     if (body.data) setData(normalizeData(body.data, state.today));
     if (!body.ok) {
       if (!body.data) setData(before);
+      if (body.error === 'Ukendt handling.') {
+        return 'Google-scriptet er en ældre version. Indsæt den nye Code.gs og lav en ny version af implementeringen (se README).';
+      }
       return plain(body.error);
     }
     const [title, ...rest] = plain(local.message).split('\n\n');
@@ -274,6 +278,8 @@ const ISSUES = {
   leave: (r) => ['afmeld.yml', `👋 Afmeld: ${r.name}`, { navn: r.name }, `Afmelder ${r.name}…`],
   cancel: (r) => ['aflys.yml', `😴 Aflys: ${r.date}`, { fredag: r.date, grund: r.reason }, `Aflyser ${longDate(r.date)}…`],
   reopen: (r) => ['genaabn.yml', `🎉 Genåbn: ${r.date}`, { fredag: r.date }, `Genåbner ${longDate(r.date)}…`],
+  butter: (r) => ['smor.yml', `🧈 Smør: ${r.date}`, { fredag: r.date }, `Tilføjer smør ${longDate(r.date)}…`],
+  unbutter: (r) => ['fjern-smor.yml', `🧈 Fjern smør: ${r.date}`, { fredag: r.date }, `Fjerner smør ${longDate(r.date)}…`],
   swap: (r) => ['byt.yml', `🔁 Byt: ${r.name} ⇄ ${r.other}`, { navn: r.name, med: r.other }, `Bytter ${r.name} og ${r.other}…`],
 };
 
@@ -327,10 +333,12 @@ function render() {
   const { data, today } = state;
   const entries = upcoming(data, today, state.weeks);
   const next = entries.find((entry) => entry.person);
+  state.butter = new Map(butterPlan(data).map((item) => [item.date, item]));
   assignColors(data.participants);
   renderNext(entries, next);
   renderPlan(entries, next);
   renderTeam();
+  renderButter();
   renderSwaps();
   renderHistory();
   state.firstRender = false;
@@ -379,7 +387,36 @@ function renderNext(entries, next) {
     fill.style.width = `${Math.max(4, progress * 100)}%`;
   });
 
+  const butter = state.butter.get(next.date);
+  const butterLine = $('#next-butter');
+  butterLine.hidden = !butter?.name;
+  if (butter?.name) {
+    butterLine.replaceChildren(pastry('p-smor'), h('span', {}, h('b', {}, butter.name), ' tager smør med'));
+  }
+
   replay(name, 'rubber');
+}
+
+function butterPill(entry) {
+  const butter = state.butter.get(entry.date);
+  if (!butter?.name) return null;
+  return h(
+    'span',
+    { class: 'butter-pill' },
+    pastry('p-smor'),
+    h('span', {}, 'Smør: ', h('b', {}, butter.name)),
+    h(
+      'button',
+      {
+        class: 'butter-pill__remove',
+        type: 'button',
+        title: 'Fjern smør',
+        'aria-label': `Fjern smør ${longDate(entry.date)}`,
+        onclick: () => removeButter(entry),
+      },
+      '×',
+    ),
+  );
 }
 
 function renderPlan(entries, next) {
@@ -429,6 +466,7 @@ function renderPlan(entries, next) {
         meta = `Uge ${isoWeek(entry.date)} · ${moved}`;
         action = h('button', { class: 'chip-btn chip-btn--reopen', type: 'button', onclick: () => reopen(entry) }, 'Genåbn');
       } else if (entry.person) {
+        const hasButter = state.butter.has(entry.date);
         who = h(
           'div',
           { class: 'friday__who' },
@@ -442,6 +480,14 @@ function renderPlan(entries, next) {
         action = [
           swappable
             ? h('button', { class: 'chip-btn chip-btn--swap', type: 'button', onclick: () => openSwap(entry) }, 'Byt')
+            : null,
+          canSwap && !hasButter
+            ? h(
+                'button',
+                { class: 'chip-btn chip-btn--butter', type: 'button', title: 'Der skal købes smør', onclick: (e) => addButter(entry, e) },
+                pastry('p-smor'),
+                'Smør',
+              )
             : null,
           h('button', { class: 'chip-btn', type: 'button', onclick: () => openCancel(entry) }, 'Aflys'),
         ];
@@ -459,7 +505,7 @@ function renderPlan(entries, next) {
           'aria-label': `${longDate(entry.date)}: ${entry.cancelled ? 'aflyst' : entry.person?.name ?? 'ledig'}`,
         },
         dateBox,
-        h('div', { class: 'friday__main' }, who, h('span', { class: 'friday__meta' }, meta)),
+        h('div', { class: 'friday__main' }, who, h('span', { class: 'friday__meta' }, meta), entry.person ? butterPill(entry) : null),
         h('div', { class: 'friday__actions' }, action),
       );
     }),
@@ -544,12 +590,51 @@ function renderSwaps() {
   );
 }
 
+function renderButter() {
+  const { data, today } = state;
+  const upcomingButter = [...state.butter.values()].filter((item) => item.date >= today && item.name);
+  const past = [
+    ...data.history.filter((entry) => entry.butter).map((entry) => ({ date: entry.date, name: entry.butter })),
+    ...[...state.butter.values()].filter((item) => item.date < today && item.name),
+  ].reverse();
+
+  const tally = new Map();
+  for (const entry of past) tally.set(entry.name, (tally.get(entry.name) ?? 0) + 1);
+
+  const row = (item, i, future) =>
+    h(
+      'li',
+      { class: `butter-entry${future ? ' is-upcoming' : ''}`, vars: { '--i': i } },
+      h('span', { class: 'butter-entry__date' }, shortDate(item.date)),
+      avatar(item.name),
+      h('strong', {}, item.name),
+      future ? h('span', { class: 'tag tag--butter' }, relativeDays(item.date)) : null,
+    );
+
+  $('#butter-upcoming').replaceChildren(
+    ...(upcomingButter.length
+      ? upcomingButter.map((item, i) => row(item, i, true))
+      : [h('li', { class: 'muted' }, 'Intet smør på listen. Tryk "Smør" på en fredag, når det slipper op.')]),
+  );
+  $('#butter-past').replaceChildren(
+    ...(past.length ? past.slice(0, 10).map((item, i) => row(item, i, false)) : [h('li', { class: 'muted' }, 'Ingen har haft smør med endnu.')]),
+  );
+  $('#butter-tally').replaceChildren(
+    ...[...tally.entries()]
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'da'))
+      .map(([name, count]) => h('span', { class: 'butter-tally__item' }, avatar(name), `${name} × ${count}`)),
+  );
+  $('#butter-tally').hidden = tally.size === 0;
+}
+
 function renderHistory() {
   const { data, today } = state;
   const past = [
     ...data.history,
     ...unsettled(data, today).map((entry) =>
-      entry.cancelled ? { date: entry.date, cancelled: true, reason: entry.reason } : { date: entry.date, name: entry.person?.name },
+      entry.cancelled
+        ? { date: entry.date, cancelled: true, reason: entry.reason }
+        : { date: entry.date, name: entry.person?.name, butter: state.butter.get(entry.date)?.name },
     ),
   ]
     .filter((entry) => entry.cancelled || entry.name)
@@ -569,7 +654,11 @@ function renderHistory() {
         h('span', { class: 'history__date' }, shortDate(entry.date)),
         entry.cancelled
           ? h('span', { class: 'muted' }, `Aflyst – ${entry.reason || 'ingen morgenmad'}`)
-          : [avatar(entry.name), h('strong', {}, entry.name)],
+          : [
+              avatar(entry.name),
+              h('strong', {}, entry.name),
+              entry.butter ? h('span', { class: 'history__butter' }, pastry('p-smor'), entry.butter) : null,
+            ],
       ),
     ),
   );
@@ -622,6 +711,25 @@ async function leave(person) {
     ok: 'Afmeld',
   });
   if (confirmed) report(await perform({ type: 'leave', name: person.name }));
+}
+
+async function addButter(entry, event) {
+  const request = { type: 'butter', date: entry.date };
+  const problem = tryRequest(request).error;
+  if (problem) return report(problem);
+  const rect = event?.currentTarget?.getBoundingClientRect();
+  if (rect) burst(rect.left + rect.width / 2, rect.top + rect.height / 2, 14, ['p-smor']);
+  report(await perform(request));
+}
+
+async function removeButter(entry) {
+  const butter = state.butter.get(entry.date);
+  const confirmed = await confirmDialog({
+    title: 'Fjern smør?',
+    text: [`Der skal alligevel ikke smør med ${longDate(entry.date)}`, butter?.name ? [' (', h('b', {}, butter.name), ')'] : '', '.'].flat(),
+    ok: 'Fjern smør',
+  });
+  if (confirmed) report(await perform({ type: 'unbutter', date: entry.date }));
 }
 
 async function reopen(entry) {
@@ -825,13 +933,13 @@ function floatingPastries() {
 }
 
 /** Wienerbrød-konfetti med lidt fysik: de hopper på bunden af skærmen. */
-function burst(x, y, count = 18) {
+function burst(x, y, count = 18, kinds = PASTRIES) {
   if (reducedMotion.matches) return;
   const layer = $('#fx');
   const particles = Array.from({ length: count }, (_, i) => {
     const isCrumb = i % 3 === 0;
     const size = isCrumb ? 7 + Math.random() * 7 : 26 + Math.random() * 22;
-    const el = isCrumb ? h('span', { class: 'crumb', vars: { '--c': random(CRUMB_COLORS) } }) : h('div', {}, pastry(random(PASTRIES)));
+    const el = isCrumb ? h('span', { class: 'crumb', vars: { '--c': random(CRUMB_COLORS) } }) : h('div', {}, pastry(random(kinds)));
     el.style.width = `${size}px`;
     el.style.height = `${size}px`;
     layer.append(el);

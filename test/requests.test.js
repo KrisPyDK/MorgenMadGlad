@@ -36,6 +36,9 @@ test('requestType læser titlen', () => {
   assert.equal(requestType('Genaabn: 2026-10-16'), 'reopen');
   assert.equal(requestType('🔁 Byt: Anna ⇄ Bo'), 'swap');
   assert.equal(requestType('Bytte af noget'), null);
+  assert.equal(requestType('🧈 Smør: 2026-10-16'), 'butter');
+  assert.equal(requestType('🧈 Fjern smør: 2026-10-16'), 'unbutter');
+  assert.equal(requestType('Fjern knappen'), null);
   assert.equal(requestType('Aflysning af noget andet'), null);
   assert.equal(requestType('Fejl på siden'), null);
   assert.equal(requestType(undefined), null);
@@ -177,4 +180,38 @@ test('bytte-issue læses fra formularen og titlen', () => {
   assert.equal(form.other, 'Carl');
   const title = parseRequest({ title: '🔁 Byt: Anna ⇄ Bo', body: '' }, today);
   assert.deepEqual([title.name, title.other], ['Anna', 'Bo']);
+});
+
+test('smør vælger den næste der ikke har morgenmad, og fordeler retfærdigt', () => {
+  const add = (current, date) => applyRequest(current, { type: 'butter', date }, asOwner);
+
+  const first = add(data, '2026-10-16'); // Anna har morgenmad
+  assert.deepEqual(first.data.butter, [{ date: '2026-10-16', name: 'Bo' }]);
+  assert.match(first.message, /Bo\*\* tager smør med .*16\. oktober/);
+  assert.match(first.message, /Anna står for morgenbrødet/);
+
+  const second = add(first.data, '2026-10-30'); // Carl har morgenmad, Bo har haft smør
+  assert.deepEqual(second.data.butter.at(-1), { date: '2026-10-30', name: 'Anna' });
+
+  const third = add(second.data, '2026-11-06'); // Anna har morgenmad
+  assert.deepEqual(third.data.butter.at(-1), { date: '2026-11-06', name: 'Carl' });
+
+  assert.throws(() => add(third.data, '2026-11-06'), /Carl\*\* tager allerede smør med/);
+});
+
+test('smør afvises på aflyste fredage, i fortiden og med for få på listen', () => {
+  const cancelled = { ...data, cancelled: [{ date: '2026-10-16', reason: 'Møde' }] };
+  assert.throws(() => applyRequest(cancelled, { type: 'butter', date: '2026-10-16' }, asOwner), /er aflyst/);
+  assert.throws(() => applyRequest(data, { type: 'butter', date: '2026-10-09' }, asOwner), /overstået/);
+  assert.throws(() => applyRequest(data, { type: 'butter', date: '2026-10-15' }, asOwner), /ikke en fredag/);
+  const alone = { ...data, participants: [data.participants[0]] };
+  assert.throws(() => applyRequest(alone, { type: 'butter', date: '2026-10-16' }, asOwner), /mindst to/);
+  assert.throws(() => applyRequest(data, { type: 'butter', date: '2026-10-16' }, asStranger), /Kun deltagere/);
+});
+
+test('smør kan fjernes igen', () => {
+  const withButter = applyRequest(data, { type: 'butter', date: '2026-10-16' }, asOwner).data;
+  const removed = applyRequest(withButter, { type: 'unbutter', date: '2026-10-16' }, asAnna);
+  assert.deepEqual(removed.data.butter, []);
+  assert.throws(() => applyRequest(removed.data, { type: 'unbutter', date: '2026-10-16' }, asOwner), /ikke smør/);
 });

@@ -1,0 +1,11 @@
+name: 🧈 Smør på en fredag
+description: Smørret er sluppet op – den næste på listen (som ikke har morgenmad) tager smør med.
+title: "🧈 Smør: "
+body:
+  - type: input
+    id: fredag
+    attributes:
+      label: Fredag (ÅÅÅÅ-MM-DD)
+      placeholder: "2026-10-23"
+    validations:
+      required: true

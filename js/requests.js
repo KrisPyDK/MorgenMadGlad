@@ -2,11 +2,22 @@
  * Fortolker og udfører anmodninger (tilmeld, afmeld, aflys, genåbn).
  * Ren logik uden netværk, som deles af siden, GitHub-robotten og Google-scriptet.
  */
-import { formatDate, isFriday, isValidDate, nextDates, upcoming } from './schedule.js';
+import { butterPlan, formatDate, isFriday, isValidDate, lastButter, nextDates, pickButter, upcoming } from './schedule.js';
 
 export class RequestError extends Error {}
 
-const TYPES = { tilmeld: 'join', afmeld: 'leave', aflys: 'cancel', genåbn: 'reopen', genaabn: 'reopen', byt: 'swap' };
+const TYPES = {
+  tilmeld: 'join',
+  afmeld: 'leave',
+  aflys: 'cancel',
+  genåbn: 'reopen',
+  genaabn: 'reopen',
+  byt: 'swap',
+  smør: 'butter',
+  smoer: 'butter',
+  'fjern smør': 'unbutter',
+  'fjern smoer': 'unbutter',
+};
 const TRUSTED = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
 const DEFAULT_REASON = 'Ingen morgenmad';
 const MAX_SWAPS = 50;
@@ -15,7 +26,7 @@ const MAX_SWAPS = 50;
 export function requestType(title) {
   const match = String(title ?? '')
     .toLowerCase()
-    .match(/^[^\p{L}]*(tilmeld|afmeld|aflys|genåbn|genaabn|byt)(?!\p{L})/u);
+    .match(/^[^\p{L}]*(tilmeld|afmeld|aflys|genåbn|genaabn|byt|smør|smoer|fjern smør|fjern smoer)(?!\p{L})/u);
   return match ? TYPES[match[1]] : null;
 }
 
@@ -95,6 +106,12 @@ export function parseRequest(issue, today) {
 }
 
 const sameName = (a, b) => a.toLowerCase() === b.toLowerCase();
+
+function checkFriday({ date, rawDate }, today) {
+  if (!date) throw new RequestError(`Jeg kunne ikke læse datoen "${rawDate}". Skriv den som ÅÅÅÅ-MM-DD.`);
+  if (!isFriday(date)) throw new RequestError(`${formatDate(date)} er ikke en fredag.`);
+  if (date < today) throw new RequestError(`${nice(date)} er allerede overstået.`);
+}
 const nice = (iso) => formatDate(iso, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 
 /**
@@ -106,6 +123,7 @@ const nice = (iso) => formatDate(iso, { weekday: 'long', day: 'numeric', month: 
  *   - Man kan afmelde sig selv; ejere/collaborators kan afmelde alle.
  *   - Deltagere og ejere/collaborators kan aflyse og genåbne fredage.
  *   - Man kan bytte sin egen fredag; ejere/collaborators kan bytte alle.
+ *   - Deltagere og ejere/collaborators kan tilføje og fjerne smør.
  * Med `trusted: true` (Google Sheet uden login) må alle det hele.
  */
 export function applyRequest(data, request, { today, author = '', association = 'NONE', trusted: trustAll = false }) {
@@ -149,9 +167,7 @@ export function applyRequest(data, request, { today, author = '', association = 
       if (!trusted && !authorIsParticipant) {
         throw new RequestError('Kun deltagere på listen eller personer med skriveadgang til repoet kan aflyse og genåbne fredage.');
       }
-      if (!date) throw new RequestError(`Jeg kunne ikke læse datoen "${request.rawDate}". Skriv den som ÅÅÅÅ-MM-DD.`);
-      if (!isFriday(date)) throw new RequestError(`${formatDate(date)} er ikke en fredag.`);
-      if (date < today) throw new RequestError(`${nice(date)} er allerede overstået.`);
+      checkFriday(request, today);
 
       const isCancelled = data.cancelled.some((c) => c.date === date);
       if (request.type === 'cancel') {
@@ -202,6 +218,41 @@ export function applyRequest(data, request, { today, author = '', association = 
         message:
           `**${a.name}** og **${b.name}** har byttet! 🔁\n\n` +
           `${a.name} tager ${formatDate(bFrom)}, og ${b.name} tager ${formatDate(aFrom)}.`,
+      };
+    }
+
+    case 'butter':
+    case 'unbutter': {
+      const { date } = request;
+      if (!trusted && !authorIsParticipant) {
+        throw new RequestError('Kun deltagere på listen eller personer med skriveadgang til repoet kan tilføje og fjerne smør.');
+      }
+      checkFriday(request, today);
+      const plan = butterPlan(data);
+      const item = plan.find((p) => p.date === date);
+
+      if (request.type === 'unbutter') {
+        if (!item) throw new RequestError(`Der er ikke smør på ${nice(date)}.`);
+        return {
+          data: { ...data, butter: data.butter.filter((b) => !item.requests.includes(b)) },
+          message: `Smørret ${nice(date)} er fjernet. 🧈`,
+        };
+      }
+
+      if (data.participants.length < 2) {
+        throw new RequestError('Der skal være mindst to på listen, før nogen kan tage smør med.');
+      }
+      if (data.cancelled.some((c) => c.date === date)) throw new RequestError(`${nice(date)} er aflyst.`);
+      if (item) throw new RequestError(`**${item.name}** tager allerede smør med ${nice(date)}.`);
+
+      const breakfast = upcoming(data, date, 1)[0]?.person?.name ?? null;
+      const last = lastButter({ ...data, butter: plan.map((p) => ({ date: p.date, name: p.name })) });
+      const name = pickButter(data, last, breakfast);
+      return {
+        data: { ...data, butter: [...data.butter, { date, name }].sort((a, b) => a.date.localeCompare(b.date)) },
+        message:
+          `🧈 **${name}** tager smør med ${nice(date)}.` +
+          (breakfast ? `\n\n${breakfast} står for morgenbrødet.` : ''),
       };
     }
 

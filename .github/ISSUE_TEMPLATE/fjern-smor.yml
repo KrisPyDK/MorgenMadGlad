@@ -1,0 +1,11 @@
+name: 🧈 Fjern smør
+description: Der skal alligevel ikke smør med den fredag.
+title: "🧈 Fjern smør: "
+body:
+  - type: input
+    id: fredag
+    attributes:
+      label: Fredag (ÅÅÅÅ-MM-DD)
+      placeholder: "2026-10-23"
+    validations:
+      required: true

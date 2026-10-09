@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
+  butterPlan,
   fridayOnOrAfter,
   isFriday,
   isoWeek,
@@ -107,4 +108,53 @@ test('settle på en fredag beholder dagens fredag som kommende', () => {
   assert.equal(settled.anchor, '2026-10-23');
   assert.deepEqual(settled.history, [{ date: '2026-10-16', name: 'Anna' }]);
   assert.equal(settled.participants[0].name, 'Bo');
+});
+
+const butterNames = (data) => butterPlan(data).map((item) => `${item.date}:${item.name}`);
+
+test('smør går til den der længst har været fri – aldrig morgenmadspersonen', () => {
+  // Anna har morgenmad 16/10, Bo 23/10, Carl 30/10.
+  const data = base({
+    butter: [
+      { date: '2026-10-16', name: 'Bo' },
+      { date: '2026-10-30', name: 'Anna' },
+    ],
+  });
+  assert.deepEqual(butterNames(data), ['2026-10-16:Bo', '2026-10-30:Anna']);
+});
+
+test('smør vælges om ved konflikt eller hvis personen er væk', () => {
+  // Bo har smør 23/10, men har selv morgenmad den dag.
+  const conflict = base({ butter: [{ date: '2026-10-23', name: 'Bo' }] });
+  assert.deepEqual(butterNames(conflict), ['2026-10-23:Anna']);
+  const gone = base({ butter: [{ date: '2026-10-16', name: 'Ukendt' }] });
+  assert.deepEqual(butterNames(gone), ['2026-10-16:Bo']);
+});
+
+test('smør på en aflyst fredag rykker med til næste fredag', () => {
+  const data = base({
+    cancelled: [{ date: '2026-10-16', reason: 'Møde' }],
+    butter: [{ date: '2026-10-16', name: 'Bo' }],
+  });
+  const [item] = butterPlan(data);
+  // Anna har nu morgenmad 23/10, og Bo tager stadig smørret.
+  assert.deepEqual([item.date, item.name, item.breakfast], ['2026-10-23', 'Bo', 'Anna']);
+});
+
+test('settle gemmer smør i historikken og flytter fremtidigt smør med', () => {
+  const data = base({
+    cancelled: [{ date: '2026-10-30', reason: 'Møde' }],
+    butter: [
+      { date: '2026-10-16', name: 'Bo' },
+      { date: '2026-10-30', name: 'Anna' },
+    ],
+  });
+  const settled = settle(data, '2026-11-03');
+  assert.deepEqual(settled.history, [
+    { date: '2026-10-16', name: 'Anna', butter: 'Bo' },
+    { date: '2026-10-23', name: 'Bo' },
+    { date: '2026-10-30', cancelled: true, reason: 'Møde' },
+  ]);
+  assert.deepEqual(settled.butter, [{ date: '2026-11-06', name: 'Anna' }]);
+  assert.deepEqual(butterNames(settled), ['2026-11-06:Anna']);
 });

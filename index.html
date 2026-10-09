@@ -76,6 +76,17 @@
       <ellipse cx="38" cy="33" rx="11" ry="4" fill="#fff" opacity=".28" transform="rotate(-12 38 33)"/>
     </symbol>
 
+    <symbol id="p-smor" viewBox="0 0 100 100">
+      <path d="M6 64 50 86 94 64 50 42Z" fill="#FFFDF6" stroke="#D9C49C" stroke-width="2.5" stroke-linejoin="round"/>
+      <g stroke="#C4950E" stroke-width="2.5" stroke-linejoin="round">
+        <path d="M18 48 50 63 50 80 18 65Z" fill="#F2C230"/>
+        <path d="M50 63 82 47 82 64 50 80Z" fill="#E3A915"/>
+        <path d="M18 48 50 32 82 47 50 63Z" fill="#FFE27A"/>
+      </g>
+      <path d="M40 46q5-11 14-5 6 5-3 8" fill="none" stroke="#FFF6CC" stroke-width="4" stroke-linecap="round"/>
+      <ellipse cx="31" cy="49" rx="6" ry="2.2" fill="#fff" opacity=".55" transform="rotate(-25 31 49)"/>
+    </symbol>
+
     <symbol id="p-kringle" viewBox="0 0 100 100">
       <g fill="none" stroke-linejoin="round">
         <path d="M28 64C40 54 58 44 66 32C74 18 90 26 88 44C86 66 68 82 50 82C32 82 14 66 12 44C10 26 26 18 34 32C42 44 60 54 72 64" stroke="#A86416" stroke-width="17" stroke-linecap="round"/>
@@ -115,6 +126,7 @@
         <p class="eyebrow" id="next-eyebrow">Henter listen…</p>
         <h2 class="next__name" id="next-name"><span class="loader"><svg><use href="#p-kanelsnegl"/></svg></span></h2>
         <p class="next__date" id="next-date"></p>
+        <p class="next__butter" id="next-butter" hidden></p>
         <div class="oven" id="oven" hidden>
           <div class="oven__bar"><span class="oven__fill" id="oven-fill"></span></div>
           <span class="oven__label" id="oven-label"></span>
@@ -157,6 +169,17 @@
           <ul class="team__list" id="team"></ul>
         </section>
 
+        <section class="card butter" aria-labelledby="butter-title">
+          <svg class="butter__deco" aria-hidden="true"><use href="#p-smor"/></svg>
+          <h2 id="butter-title">Smørlisten</h2>
+          <p class="muted butter__intro">Smørret holder flere gange. Tryk "Smør" på en fredag, når det slipper op. Så vælges den næste på listen, der ikke har morgenmad den dag.</p>
+          <h3 class="butter__sub">Skal have smør med</h3>
+          <ol class="butter__list" id="butter-upcoming"></ol>
+          <h3 class="butter__sub">Har haft smør med</h3>
+          <ol class="butter__list" id="butter-past"></ol>
+          <div class="butter-tally" id="butter-tally" hidden></div>
+        </section>
+
         <section class="card swaps" aria-labelledby="swaps-title">
           <div class="card__head card__head--row">
             <h2 id="swaps-title">Byttelog</h2>
@@ -172,6 +195,7 @@
             <li><svg aria-hidden="true"><use href="#p-spandauer"/></svg><span><b>Hver fredag</b> tager den næste på listen morgenbrød med.</span></li>
             <li><svg aria-hidden="true"><use href="#p-kanelsnegl"/></svg><span><b>Ingen morgenmad?</b> Aflys fredagen – så rykker alle en uge.</span></li>
             <li><svg aria-hidden="true"><use href="#p-rundstykke"/></svg><span><b>Kan du ikke?</b> Tryk "Byt" og byt fredag med en kollega.</span></li>
+            <li><svg aria-hidden="true"><use href="#p-smor"/></svg><span><b>Smør sluppet op?</b> Tryk "Smør" – så tager den næste på listen smør med.</span></li>
           </ol>
           <p class="muted small" id="how-note"></p>
         </section>

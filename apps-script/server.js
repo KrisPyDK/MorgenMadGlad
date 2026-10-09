@@ -4,11 +4,11 @@
  *
  * Gemmer listen i et Google Sheet, så ingen behøver login.
  * Siden henter listen med GET og sender ændringer med POST:
- *   { action: 'join' | 'leave' | 'cancel' | 'reopen' | 'swap', name?, other?, date?, reason? }
+ *   { action: 'join' | 'leave' | 'cancel' | 'reopen' | 'swap' | 'butter' | 'unbutter', name?, other?, date?, reason? }
  *
  * Arkene oprettes automatisk:
  *   Data – listen som JSON i celle A1 (selve "databasen")
- *   Plan – de næste fredage, så du kan se planen direkte i arket
+ *   Plan – de næste fredage med morgenmad og smør, så du kan se planen i arket
  *   Log  – hvem der gjorde hvad og hvornår (også bytninger)
  */
 
@@ -18,7 +18,7 @@ const SPREADSHEET_ID = '1irWR090aEoYwSsp8o0U_YjfxElnuwXdATMLrGvQM3-A';
 const DATA_SHEET = 'Data';
 const PLAN_SHEET = 'Plan';
 const LOG_SHEET = 'Log';
-const ACTIONS = ['join', 'leave', 'cancel', 'reopen', 'swap'];
+const ACTIONS = ['join', 'leave', 'cancel', 'reopen', 'swap', 'butter', 'unbutter'];
 const MAX_PARTICIPANTS = 60;
 
 function doGet() {
@@ -103,18 +103,20 @@ function writeData_(data, today) {
   sheet.getRange('A1').setValue(JSON.stringify(data));
   sheet.getRange('A3').setValue('Listen gemmes som JSON i A1. Brug helst hjemmesiden – eller ret forsigtigt.');
 
+  const butter = new Map(butterPlan(data).map((item) => [item.date, item.name]));
   const rows = upcoming(data, today, 12).map((entry) => [
     entry.date,
     entry.cancelled ? `Aflyst – ${entry.reason || 'ingen morgenmad'}` : entry.person ? entry.person.name : '',
+    butter.get(entry.date) || '',
   ]);
   const plan = sheet_(PLAN_SHEET);
   plan.clearContents();
-  plan.getRange(1, 1, rows.length + 1, 2).setValues([['Fredag', 'Hvem'], ...rows]);
+  plan.getRange(1, 1, rows.length + 1, 3).setValues([['Fredag', 'Morgenmad', 'Smør'], ...rows]);
 }
 
 function log_(request, message) {
   const what =
-    request.type === 'cancel' || request.type === 'reopen'
+    ['cancel', 'reopen', 'butter', 'unbutter'].includes(request.type)
       ? request.date
       : request.type === 'swap'
         ? `${request.name} ⇄ ${request.other}`

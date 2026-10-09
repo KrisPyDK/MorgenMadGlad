@@ -12,6 +12,9 @@
  *                 [{ date, cancelled: true, reason }]
  *   swaps         Byttelog: [{ date, a, b, aFrom, bFrom }] – a og b byttede
  *                 plads den `date`, så a tog bFrom og b tog aFrom.
+ *   butter        Fredage hvor der skal købes smør: [{ date, name }]. `name`
+ *                 vælges når smørret tilføjes (se pickButter). Tidligere
+ *                 smør står i history som { ..., butter: navn }.
  */
 
 export const TIME_ZONE = 'Europe/Copenhagen';
@@ -87,6 +90,10 @@ export function normalizeData(raw, today) {
     cancelled: [...cancelled.values()].sort((a, b) => a.date.localeCompare(b.date)),
     history: Array.isArray(source.history) ? source.history.filter((h) => h && isValidDate(h.date)) : [],
     swaps: Array.isArray(source.swaps) ? source.swaps.filter((s) => s && isValidDate(s.date) && s.a && s.b) : [],
+    butter: (Array.isArray(source.butter) ? source.butter : [])
+      .map((b) => (typeof b === 'string' ? { date: b } : { ...b }))
+      .filter((b) => isFriday(b.date))
+      .sort((a, b) => a.date.localeCompare(b.date)),
   };
 }
 
@@ -154,6 +161,8 @@ export function settle(data, today) {
   const target = fridayOnOrAfter(today);
   if (data.anchor >= target) return data;
 
+  const plan = butterPlan(data);
+  const butterOn = new Map(plan.map((item) => [item.date, item.name]));
   const history = [...data.history];
   let turns = 0;
   for (const entry of fridays(data)) {
@@ -162,7 +171,18 @@ export function settle(data, today) {
       break;
     }
     if (entry.cancelled) history.push({ date: entry.date, cancelled: true, reason: entry.reason });
-    else if (entry.person) history.push({ date: entry.date, name: entry.person.name });
+    else if (entry.person) {
+      const butter = butterOn.get(entry.date);
+      history.push(butter ? { date: entry.date, name: entry.person.name, butter } : { date: entry.date, name: entry.person.name });
+    }
+  }
+
+  // Smør der stadig ligger forude. Var det på en aflyst fredag, flyttes det til
+  // den fredag hvor det faktisk bliver taget med.
+  const butter = [];
+  for (const item of plan) {
+    if (item.date < target) continue;
+    for (const request of item.requests) butter.push(request.date >= target ? request : { ...request, date: item.date });
   }
 
   const people = data.participants;
@@ -173,5 +193,57 @@ export function settle(data, today) {
     participants: [...people.slice(shift), ...people.slice(0, shift)],
     cancelled: data.cancelled.filter((c) => c.date >= target),
     history: history.slice(-MAX_HISTORY),
+    butter,
   };
+}
+
+/* ---------- Smør ---------- */
+
+/** Hvornår har hver person sidst haft (eller skal have) smør med? Map(navn -> dato). */
+export function lastButter(data) {
+  const last = new Map();
+  const note = (name, date) => {
+    if (name && !(last.get(name) >= date)) last.set(name, date);
+  };
+  for (const entry of data.history) note(entry.butter, entry.date);
+  for (const entry of data.butter ?? []) note(entry.name, entry.date);
+  return last;
+}
+
+/**
+ * Vælger hvem der skal have smør med: den der længst har været fri for smør
+ * (aldrig = først), men aldrig den der har morgenmad samme fredag.
+ * Står flere lige, vælges den der kommer først på listen.
+ */
+export function pickButter(data, last, breakfastName) {
+  const candidates = data.participants.map((p) => p.name).filter((name) => name !== breakfastName);
+  candidates.sort((a, b) => (last.get(a) ?? '').localeCompare(last.get(b) ?? ''));
+  return candidates[0] ?? null;
+}
+
+/**
+ * Smørplanen: [{ date, name, breakfast, requests }] for alle fredage fra anchor
+ * hvor der skal smør med. Smør på en aflyst fredag rykker til næste fredag. Er
+ * den valgte person ikke længere på listen, eller har vedkommende morgenmad samme
+ * dag (efter en bytning eller aflysning), vælges en ny.
+ */
+export function butterPlan(data) {
+  const requests = (data.butter ?? []).filter((b) => b.date >= data.anchor);
+  if (!requests.length) return [];
+  const names = new Set(data.participants.map((p) => p.name));
+  const last = lastButter(data);
+  const plan = [];
+  let i = 0;
+  for (const entry of fridays(data)) {
+    if (i >= requests.length) break;
+    if (entry.cancelled || entry.date < requests[i].date) continue;
+    const group = [];
+    while (i < requests.length && requests[i].date <= entry.date) group.push(requests[i++]);
+    const breakfast = entry.person?.name ?? null;
+    const chosen = group.find((r) => names.has(r.name) && r.name !== breakfast)?.name;
+    const name = chosen ?? pickButter(data, last, breakfast);
+    if (name && !(last.get(name) >= entry.date)) last.set(name, entry.date);
+    plan.push({ date: entry.date, name, breakfast, requests: group });
+  }
+  return plan;
 }

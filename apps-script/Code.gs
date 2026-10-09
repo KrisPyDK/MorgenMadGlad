@@ -21,6 +21,9 @@
  *                 [{ date, cancelled: true, reason }]
  *   swaps         Byttelog: [{ date, a, b, aFrom, bFrom }] – a og b byttede
  *                 plads den `date`, så a tog bFrom og b tog aFrom.
+ *   butter        Fredage hvor der skal købes smør: [{ date, name }]. `name`
+ *                 vælges når smørret tilføjes (se pickButter). Tidligere
+ *                 smør står i history som { ..., butter: navn }.
  */
 
 const TIME_ZONE = 'Europe/Copenhagen';
@@ -96,6 +99,10 @@ function normalizeData(raw, today) {
     cancelled: [...cancelled.values()].sort((a, b) => a.date.localeCompare(b.date)),
     history: Array.isArray(source.history) ? source.history.filter((h) => h && isValidDate(h.date)) : [],
     swaps: Array.isArray(source.swaps) ? source.swaps.filter((s) => s && isValidDate(s.date) && s.a && s.b) : [],
+    butter: (Array.isArray(source.butter) ? source.butter : [])
+      .map((b) => (typeof b === 'string' ? { date: b } : { ...b }))
+      .filter((b) => isFriday(b.date))
+      .sort((a, b) => a.date.localeCompare(b.date)),
   };
 }
 
@@ -163,6 +170,8 @@ function settle(data, today) {
   const target = fridayOnOrAfter(today);
   if (data.anchor >= target) return data;
 
+  const plan = butterPlan(data);
+  const butterOn = new Map(plan.map((item) => [item.date, item.name]));
   const history = [...data.history];
   let turns = 0;
   for (const entry of fridays(data)) {
@@ -171,7 +180,18 @@ function settle(data, today) {
       break;
     }
     if (entry.cancelled) history.push({ date: entry.date, cancelled: true, reason: entry.reason });
-    else if (entry.person) history.push({ date: entry.date, name: entry.person.name });
+    else if (entry.person) {
+      const butter = butterOn.get(entry.date);
+      history.push(butter ? { date: entry.date, name: entry.person.name, butter } : { date: entry.date, name: entry.person.name });
+    }
+  }
+
+  // Smør der stadig ligger forude. Var det på en aflyst fredag, flyttes det til
+  // den fredag hvor det faktisk bliver taget med.
+  const butter = [];
+  for (const item of plan) {
+    if (item.date < target) continue;
+    for (const request of item.requests) butter.push(request.date >= target ? request : { ...request, date: item.date });
   }
 
   const people = data.participants;
@@ -182,7 +202,59 @@ function settle(data, today) {
     participants: [...people.slice(shift), ...people.slice(0, shift)],
     cancelled: data.cancelled.filter((c) => c.date >= target),
     history: history.slice(-MAX_HISTORY),
+    butter,
   };
+}
+
+/* ---------- Smør ---------- */
+
+/** Hvornår har hver person sidst haft (eller skal have) smør med? Map(navn -> dato). */
+function lastButter(data) {
+  const last = new Map();
+  const note = (name, date) => {
+    if (name && !(last.get(name) >= date)) last.set(name, date);
+  };
+  for (const entry of data.history) note(entry.butter, entry.date);
+  for (const entry of data.butter ?? []) note(entry.name, entry.date);
+  return last;
+}
+
+/**
+ * Vælger hvem der skal have smør med: den der længst har været fri for smør
+ * (aldrig = først), men aldrig den der har morgenmad samme fredag.
+ * Står flere lige, vælges den der kommer først på listen.
+ */
+function pickButter(data, last, breakfastName) {
+  const candidates = data.participants.map((p) => p.name).filter((name) => name !== breakfastName);
+  candidates.sort((a, b) => (last.get(a) ?? '').localeCompare(last.get(b) ?? ''));
+  return candidates[0] ?? null;
+}
+
+/**
+ * Smørplanen: [{ date, name, breakfast, requests }] for alle fredage fra anchor
+ * hvor der skal smør med. Smør på en aflyst fredag rykker til næste fredag. Er
+ * den valgte person ikke længere på listen, eller har vedkommende morgenmad samme
+ * dag (efter en bytning eller aflysning), vælges en ny.
+ */
+function butterPlan(data) {
+  const requests = (data.butter ?? []).filter((b) => b.date >= data.anchor);
+  if (!requests.length) return [];
+  const names = new Set(data.participants.map((p) => p.name));
+  const last = lastButter(data);
+  const plan = [];
+  let i = 0;
+  for (const entry of fridays(data)) {
+    if (i >= requests.length) break;
+    if (entry.cancelled || entry.date < requests[i].date) continue;
+    const group = [];
+    while (i < requests.length && requests[i].date <= entry.date) group.push(requests[i++]);
+    const breakfast = entry.person?.name ?? null;
+    const chosen = group.find((r) => names.has(r.name) && r.name !== breakfast)?.name;
+    const name = chosen ?? pickButter(data, last, breakfast);
+    if (name && !(last.get(name) >= entry.date)) last.set(name, entry.date);
+    plan.push({ date: entry.date, name, breakfast, requests: group });
+  }
+  return plan;
 }
 
 // ===== js/requests.js =====
@@ -194,7 +266,18 @@ function settle(data, today) {
 
 class RequestError extends Error {}
 
-const TYPES = { tilmeld: 'join', afmeld: 'leave', aflys: 'cancel', genåbn: 'reopen', genaabn: 'reopen', byt: 'swap' };
+const TYPES = {
+  tilmeld: 'join',
+  afmeld: 'leave',
+  aflys: 'cancel',
+  genåbn: 'reopen',
+  genaabn: 'reopen',
+  byt: 'swap',
+  smør: 'butter',
+  smoer: 'butter',
+  'fjern smør': 'unbutter',
+  'fjern smoer': 'unbutter',
+};
 const TRUSTED = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
 const DEFAULT_REASON = 'Ingen morgenmad';
 const MAX_SWAPS = 50;
@@ -203,7 +286,7 @@ const MAX_SWAPS = 50;
 function requestType(title) {
   const match = String(title ?? '')
     .toLowerCase()
-    .match(/^[^\p{L}]*(tilmeld|afmeld|aflys|genåbn|genaabn|byt)(?!\p{L})/u);
+    .match(/^[^\p{L}]*(tilmeld|afmeld|aflys|genåbn|genaabn|byt|smør|smoer|fjern smør|fjern smoer)(?!\p{L})/u);
   return match ? TYPES[match[1]] : null;
 }
 
@@ -283,6 +366,12 @@ function parseRequest(issue, today) {
 }
 
 const sameName = (a, b) => a.toLowerCase() === b.toLowerCase();
+
+function checkFriday({ date, rawDate }, today) {
+  if (!date) throw new RequestError(`Jeg kunne ikke læse datoen "${rawDate}". Skriv den som ÅÅÅÅ-MM-DD.`);
+  if (!isFriday(date)) throw new RequestError(`${formatDate(date)} er ikke en fredag.`);
+  if (date < today) throw new RequestError(`${nice(date)} er allerede overstået.`);
+}
 const nice = (iso) => formatDate(iso, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 
 /**
@@ -294,6 +383,7 @@ const nice = (iso) => formatDate(iso, { weekday: 'long', day: 'numeric', month: 
  *   - Man kan afmelde sig selv; ejere/collaborators kan afmelde alle.
  *   - Deltagere og ejere/collaborators kan aflyse og genåbne fredage.
  *   - Man kan bytte sin egen fredag; ejere/collaborators kan bytte alle.
+ *   - Deltagere og ejere/collaborators kan tilføje og fjerne smør.
  * Med `trusted: true` (Google Sheet uden login) må alle det hele.
  */
 function applyRequest(data, request, { today, author = '', association = 'NONE', trusted: trustAll = false }) {
@@ -337,9 +427,7 @@ function applyRequest(data, request, { today, author = '', association = 'NONE',
       if (!trusted && !authorIsParticipant) {
         throw new RequestError('Kun deltagere på listen eller personer med skriveadgang til repoet kan aflyse og genåbne fredage.');
       }
-      if (!date) throw new RequestError(`Jeg kunne ikke læse datoen "${request.rawDate}". Skriv den som ÅÅÅÅ-MM-DD.`);
-      if (!isFriday(date)) throw new RequestError(`${formatDate(date)} er ikke en fredag.`);
-      if (date < today) throw new RequestError(`${nice(date)} er allerede overstået.`);
+      checkFriday(request, today);
 
       const isCancelled = data.cancelled.some((c) => c.date === date);
       if (request.type === 'cancel') {
@@ -393,6 +481,41 @@ function applyRequest(data, request, { today, author = '', association = 'NONE',
       };
     }
 
+    case 'butter':
+    case 'unbutter': {
+      const { date } = request;
+      if (!trusted && !authorIsParticipant) {
+        throw new RequestError('Kun deltagere på listen eller personer med skriveadgang til repoet kan tilføje og fjerne smør.');
+      }
+      checkFriday(request, today);
+      const plan = butterPlan(data);
+      const item = plan.find((p) => p.date === date);
+
+      if (request.type === 'unbutter') {
+        if (!item) throw new RequestError(`Der er ikke smør på ${nice(date)}.`);
+        return {
+          data: { ...data, butter: data.butter.filter((b) => !item.requests.includes(b)) },
+          message: `Smørret ${nice(date)} er fjernet. 🧈`,
+        };
+      }
+
+      if (data.participants.length < 2) {
+        throw new RequestError('Der skal være mindst to på listen, før nogen kan tage smør med.');
+      }
+      if (data.cancelled.some((c) => c.date === date)) throw new RequestError(`${nice(date)} er aflyst.`);
+      if (item) throw new RequestError(`**${item.name}** tager allerede smør med ${nice(date)}.`);
+
+      const breakfast = upcoming(data, date, 1)[0]?.person?.name ?? null;
+      const last = lastButter({ ...data, butter: plan.map((p) => ({ date: p.date, name: p.name })) });
+      const name = pickButter(data, last, breakfast);
+      return {
+        data: { ...data, butter: [...data.butter, { date, name }].sort((a, b) => a.date.localeCompare(b.date)) },
+        message:
+          `🧈 **${name}** tager smør med ${nice(date)}.` +
+          (breakfast ? `\n\n${breakfast} står for morgenbrødet.` : ''),
+      };
+    }
+
     default:
       throw new RequestError('Ukendt handling.');
   }
@@ -406,11 +529,11 @@ function applyRequest(data, request, { today, author = '', association = 'NONE',
  *
  * Gemmer listen i et Google Sheet, så ingen behøver login.
  * Siden henter listen med GET og sender ændringer med POST:
- *   { action: 'join' | 'leave' | 'cancel' | 'reopen' | 'swap', name?, other?, date?, reason? }
+ *   { action: 'join' | 'leave' | 'cancel' | 'reopen' | 'swap' | 'butter' | 'unbutter', name?, other?, date?, reason? }
  *
  * Arkene oprettes automatisk:
  *   Data – listen som JSON i celle A1 (selve "databasen")
- *   Plan – de næste fredage, så du kan se planen direkte i arket
+ *   Plan – de næste fredage med morgenmad og smør, så du kan se planen i arket
  *   Log  – hvem der gjorde hvad og hvornår (også bytninger)
  */
 
@@ -420,7 +543,7 @@ const SPREADSHEET_ID = '1irWR090aEoYwSsp8o0U_YjfxElnuwXdATMLrGvQM3-A';
 const DATA_SHEET = 'Data';
 const PLAN_SHEET = 'Plan';
 const LOG_SHEET = 'Log';
-const ACTIONS = ['join', 'leave', 'cancel', 'reopen', 'swap'];
+const ACTIONS = ['join', 'leave', 'cancel', 'reopen', 'swap', 'butter', 'unbutter'];
 const MAX_PARTICIPANTS = 60;
 
 function doGet() {
@@ -505,18 +628,20 @@ function writeData_(data, today) {
   sheet.getRange('A1').setValue(JSON.stringify(data));
   sheet.getRange('A3').setValue('Listen gemmes som JSON i A1. Brug helst hjemmesiden – eller ret forsigtigt.');
 
+  const butter = new Map(butterPlan(data).map((item) => [item.date, item.name]));
   const rows = upcoming(data, today, 12).map((entry) => [
     entry.date,
     entry.cancelled ? `Aflyst – ${entry.reason || 'ingen morgenmad'}` : entry.person ? entry.person.name : '',
+    butter.get(entry.date) || '',
   ]);
   const plan = sheet_(PLAN_SHEET);
   plan.clearContents();
-  plan.getRange(1, 1, rows.length + 1, 2).setValues([['Fredag', 'Hvem'], ...rows]);
+  plan.getRange(1, 1, rows.length + 1, 3).setValues([['Fredag', 'Morgenmad', 'Smør'], ...rows]);
 }
 
 function log_(request, message) {
   const what =
-    request.type === 'cancel' || request.type === 'reopen'
+    ['cancel', 'reopen', 'butter', 'unbutter'].includes(request.type)
       ? request.date
       : request.type === 'swap'
         ? `${request.name} ⇄ ${request.other}`

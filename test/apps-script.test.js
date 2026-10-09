@@ -85,9 +85,9 @@ test('tilmeld, aflys og afmeld gemmes i arket uden login', () => {
   const saved = google.get().data;
   assert.deepEqual(saved.participants.map((p) => p.name), ['Bo']);
   assert.deepEqual(plain(google.sheets.get('Plan').values.slice(0, 3)), [
-    ['Fredag', 'Hvem'],
-    ['2026-10-16', 'Aflyst – Fælles møde'],
-    ['2026-10-23', 'Bo'],
+    ['Fredag', 'Morgenmad', 'Smør'],
+    ['2026-10-16', 'Aflyst – Fælles møde', ''],
+    ['2026-10-23', 'Bo', ''],
   ]);
   assert.deepEqual(plain(google.sheets.get('Log').rows.map((row) => row.slice(1, 3))), [
     ['join', 'Mette'],
@@ -119,12 +119,26 @@ test('bytning gemmes og står i loggen', () => {
     { date: '2026-10-12', a: 'Mette', b: 'Carl', aFrom: '2026-10-16', bFrom: '2026-10-30' },
   ]);
   assert.deepEqual(plain(google.sheets.get('Plan').values.slice(1, 4)), [
-    ['2026-10-16', 'Carl'],
-    ['2026-10-23', 'Bo'],
-    ['2026-10-30', 'Mette'],
+    ['2026-10-16', 'Carl', ''],
+    ['2026-10-23', 'Bo', ''],
+    ['2026-10-30', 'Mette', ''],
   ]);
   assert.deepEqual(plain(google.sheets.get('Log').rows.at(-1).slice(1, 3)), ['swap', 'Mette ⇄ Carl']);
   assert.equal(google.post({ action: 'swap', name: 'Mette', other: 'Ukendt' }).ok, false);
+});
+
+test('smør tilføjes, vises i planen og logges', () => {
+  const google = googleSandbox();
+  for (const name of ['Mette', 'Bo', 'Carl']) google.post({ action: 'join', name });
+  const added = google.post({ action: 'butter', date: '2026-10-16' });
+  assert.equal(added.ok, true);
+  assert.deepEqual(plain(added.data.butter), [{ date: '2026-10-16', name: 'Bo' }]);
+  assert.deepEqual(plain(google.sheets.get('Plan').values[1]), ['2026-10-16', 'Mette', 'Bo']);
+  assert.deepEqual(plain(google.sheets.get('Log').rows.at(-1).slice(1, 3)), ['butter', '2026-10-16']);
+
+  assert.equal(google.post({ action: 'butter', date: '2026-10-16' }).ok, false);
+  assert.equal(google.post({ action: 'unbutter', date: '2026-10-16' }).ok, true);
+  assert.deepEqual(plain(google.get().data.butter), []);
 });
 
 test('scriptet bruger dit Google Sheet', () => {

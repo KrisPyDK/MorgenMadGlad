@@ -269,6 +269,7 @@ svg { display: block; }
 #plan { --delay: 1.05s; }
 #tilmeld { --delay: 1.15s; }
 .team { --delay: 1.25s; }
+.butter { --delay: 1.28s; }
 .swaps { --delay: 1.3s; }
 .how { --delay: 1.35s; }
 .history { --delay: 1.45s; }
@@ -960,3 +961,119 @@ svg { display: block; }
 .swap-effect { color: var(--ink); background: var(--butter-soft); border-radius: 14px; padding: 10px 12px; }
 .swap-effect[hidden] { display: none; }
 .btn:disabled { opacity: .45; cursor: not-allowed; scale: 1; rotate: 0deg; }
+
+/* ---------- Smør ---------- */
+
+.chip-btn--butter { display: inline-flex; align-items: center; gap: 4px; padding-left: 8px; }
+.chip-btn--butter svg { width: 22px; height: 22px; transition: rotate .4s var(--spring-strong), scale .4s var(--spring-strong); }
+.chip-btn--butter:hover { border-color: #E3A915; }
+.chip-btn--butter:hover svg { rotate: -14deg; scale: 1.25; }
+
+.butter-pill {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  padding: 2px 4px 2px 6px;
+  border-radius: 999px;
+  background: #FFF1B8;
+  border: 2px solid #F2C230;
+  color: #5A3D10;
+  font-size: .85rem;
+  font-weight: 700;
+  animation: butter-pop .7s var(--spring-strong) backwards;
+  animation-delay: calc(var(--i, 0) * 70ms + var(--base-delay, 0s) + .25s);
+}
+.butter-pill svg { width: 22px; height: 22px; animation: butter-wobble 3s ease-in-out infinite; }
+.butter-pill__remove {
+  appearance: none;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: #8A6A20;
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: scale .3s var(--spring), background-color .2s, color .2s;
+}
+.butter-pill__remove:hover { background: var(--jam); color: #fff; scale: 1.15; }
+@keyframes butter-pop {
+  0% { transform: scale(0) rotate(-20deg); opacity: 0; }
+  60% { transform: scale(1.2) rotate(4deg); opacity: 1; }
+  100% { transform: none; }
+}
+@keyframes butter-wobble {
+  0%, 100% { transform: rotate(-6deg) scale(1, 1); }
+  50% { transform: rotate(6deg) scale(1.08, .92); }
+}
+
+.next__butter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  color: #5A3D10;
+}
+.next__butter[hidden] { display: none; }
+.next__butter svg { width: 34px; height: 34px; flex: none; animation: butter-wobble 2.6s ease-in-out infinite; }
+@media (max-width: 560px) {
+  .next__butter { justify-content: center; }
+}
+
+.butter { overflow: hidden; }
+.butter h2, .butter__intro { padding-right: 64px; }
+.butter__deco {
+  position: absolute;
+  right: -6px;
+  top: -6px;
+  width: 88px;
+  height: 88px;
+  rotate: -10deg;
+  animation: butter-wobble 3.6s ease-in-out infinite;
+}
+.butter__intro { margin: 6px 0 14px; font-size: .95rem; }
+.butter__sub {
+  font-family: var(--font-display);
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--ink-soft);
+  margin: 14px 0 8px;
+}
+.butter__list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.butter-entry {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: var(--card-2);
+  border: 2px solid var(--line);
+  animation: pop-in .5s var(--spring) backwards;
+  animation-delay: calc(var(--i, 0) * 45ms);
+}
+.butter-entry.is-upcoming { background: #FFF1B8; border-color: #F2C230; color: #3E2415; }
+.butter-entry .avatar { width: 28px; height: 28px; font-size: .8rem; }
+.butter-entry strong { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.butter-entry__date { min-width: 4.5em; font-weight: 800; color: var(--ink-soft); }
+.butter-entry.is-upcoming .butter-entry__date { color: #6B4A12; }
+.tag--butter { background: #E3A915; color: #3E2415; }
+
+.butter-tally { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+.butter-tally[hidden] { display: none; }
+.butter-tally__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px 3px 3px;
+  border-radius: 999px;
+  background: var(--butter-soft);
+  font-size: .85rem;
+  font-weight: 800;
+}
+.butter-tally__item .avatar { width: 24px; height: 24px; font-size: .7rem; }
+
+.history__butter { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; font-size: .85rem; font-weight: 700; color: var(--ink-soft); }
+.history__butter svg { width: 20px; height: 20px; }
