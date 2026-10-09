@@ -4,7 +4,7 @@
  *
  * Gemmer listen i et Google Sheet, så ingen behøver login.
  * Siden henter listen med GET og sender ændringer med POST:
- *   { action: 'join' | 'leave' | 'cancel' | 'reopen' | 'swap' | 'butter' | 'unbutter' | 'mark', name?, other?, date?, reason?, given? }
+ *   { action: 'join' | 'leave' | 'cancel' | 'reopen' | 'swap' | 'butter' | 'unbutter' | 'mark' | 'gave', name?, other?, date?, reason?, given? }
  *
  * Arkene oprettes automatisk:
  *   Data – listen som JSON i celle A1 (selve "databasen")
@@ -18,7 +18,7 @@ const SPREADSHEET_ID = '1NivBtDLpzeWHS6q6aGp6IQ8Gg42iskbLPOjtTi2L1Bw';
 const DATA_SHEET = 'Data';
 const PLAN_SHEET = 'Plan';
 const LOG_SHEET = 'Log';
-const ACTIONS = ['join', 'leave', 'cancel', 'reopen', 'swap', 'butter', 'unbutter', 'mark'];
+const ACTIONS = ['join', 'leave', 'cancel', 'reopen', 'swap', 'butter', 'unbutter', 'mark', 'gave'];
 const MAX_PARTICIPANTS = 60;
 
 function doGet() {

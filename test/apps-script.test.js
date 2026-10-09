@@ -164,6 +164,22 @@ test('markering af givet morgenmad gemmes, vises i planen og flyttes til histori
   assert.deepEqual(plain(data.marks), [{ date: '2026-10-23', given: false }]);
 });
 
+test('jeg gav i dag: kun dig på listen, og listen starter først næste fredag', () => {
+  const google = googleSandbox({ today: '2026-10-09' });
+  google.get(); // opretter Data-arket
+  google.sheets.get('Data').cells.set(
+    'A1',
+    JSON.stringify({ anchor: '2026-10-16', participants: [{ name: 'KBMI' }], cancelled: [], history: [], swaps: [], butter: [] }),
+  );
+  const gave = google.post({ action: 'gave', name: 'KBMI', date: '2026-10-09' });
+  assert.equal(gave.ok, true);
+  assert.deepEqual(plain(gave.data.history), [{ date: '2026-10-09', name: 'KBMI', given: true }]);
+
+  const joined = google.post({ action: 'join', name: 'Mette' });
+  assert.deepEqual(plain(joined.data.participants.map((p) => p.name)), ['Mette', 'KBMI']);
+  assert.deepEqual(plain(google.sheets.get('Plan').values.slice(1, 3).map((row) => row[1])), ['Mette', 'KBMI']);
+});
+
 test('scriptet bruger dit Google Sheet', () => {
   const google = googleSandbox();
   google.get();

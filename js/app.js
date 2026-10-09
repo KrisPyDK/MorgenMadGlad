@@ -4,6 +4,7 @@ import {
   butterPlan,
   daysBetween,
   formatDate,
+  isFriday,
   isoWeek,
   nextDates,
   normalizeData,
@@ -212,6 +213,7 @@ function perform(request) {
   const check = tryRequest(request);
   if (check.error) return Promise.resolve(check.error);
   if (state.mode === 'github') {
+    if (request.type === 'gave') return Promise.resolve('Det virker kun, når listen gemmes i Google Sheet.');
     if (request.type === 'mark' && request.given === null) {
       return Promise.resolve('Markeringen kan kun fjernes, når listen gemmes i Google Sheet.');
     }
@@ -346,6 +348,7 @@ function render() {
   assignColors(data.participants);
   renderNext(entries, next);
   renderPlan(entries, next);
+  renderToday(entries);
   renderTeam();
   renderButter();
   renderSwaps();
@@ -730,6 +733,46 @@ async function leave(person) {
     ok: 'Afmeld',
   });
   if (confirmed) report(await perform({ type: 'leave', name: person.name }));
+}
+
+/** På en fredag der ikke står i planen: "Hvem gav morgenmad i dag?" */
+function renderToday(entries) {
+  const card = $('#today-card');
+  const { today, data } = state;
+  const inPlan = entries.some((entry) => entry.date === today);
+  card.hidden = !(isFriday(today) && !inPlan && data.participants.length > 0);
+  if (card.hidden) return;
+
+  const done = data.history.find((entry) => entry.date === today && entry.name);
+  if (done && !state.editToday) {
+    $('#today-body').replaceChildren(
+      h('h2', {}, '✅ Tak for i dag!'),
+      h('p', { class: 'muted' }, h('b', {}, done.name), ' gav morgenmad i dag og er rykket bagerst i køen. '),
+      h('button', { class: 'chip-btn', type: 'button', onclick: () => { state.editToday = true; renderToday(entries); } }, 'Ret'),
+    );
+    return;
+  }
+  $('#today-body').replaceChildren(
+    h('h2', {}, 'Det er fredag! 🎉'),
+    h('p', { class: 'muted' }, 'Hvem gav morgenmad i dag? Tryk på navnet, så rykker vedkommende bagerst i køen.'),
+    h(
+      'div',
+      { class: 'today__people' },
+      ...data.participants.map((person) =>
+        h('button', { class: 'today__person', type: 'button', onclick: (e) => gave(person, e) }, avatar(person.name), person.name),
+      ),
+    ),
+  );
+}
+
+async function gave(person, event) {
+  const request = { type: 'gave', name: person.name, date: state.today };
+  const problem = tryRequest(request).error;
+  if (problem) return report(problem);
+  const rect = event.currentTarget.getBoundingClientRect();
+  burst(rect.left + rect.width / 2, rect.top + rect.height / 2, 22);
+  state.editToday = false;
+  report(await perform(request));
 }
 
 function markBlock(entry) {

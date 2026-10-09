@@ -410,7 +410,16 @@ function applyRequest(data, request, { today, author = '', association = 'NONE',
       if (existing) throw new RequestError(`**${existing.name}** står allerede på listen.`);
       const person = { name, joined: today };
       if (author && !authorIsParticipant) person.github = author;
-      const next = { ...data, participants: [...data.participants, person] };
+      // Den der senest har givet, har lige haft sin tur og står bagerst. Nye kommer foran dem,
+      // så den nye får næste tur i stedet for at den der lige har givet, skal give igen.
+      const people = data.participants;
+      const history = data.history || [];
+      const lastGiver = history.length ? history[history.length - 1].name : null;
+      const atBack = lastGiver && people.length && people[people.length - 1].name === lastGiver;
+      const next = {
+        ...data,
+        participants: atBack ? [...people.slice(0, -1), person, people[people.length - 1]] : [...people, person],
+      };
       const first = nextDates(next, today).get(name);
       return {
         data: next,
@@ -489,6 +498,39 @@ function applyRequest(data, request, { today, author = '', association = 'NONE',
         message:
           `**${a.name}** og **${b.name}** har byttet! 🔁\n\n` +
           `${a.name} tager ${formatDate(bFrom)}, og ${b.name} tager ${formatDate(aFrom)}.`,
+      };
+    }
+
+    case 'gave': {
+      const person = data.participants.find((p) => request.name && sameName(p.name, request.name));
+      if (!person) throw new RequestError(`Jeg kan ikke finde **${request.name || '(intet navn)'}** på listen.`);
+      if (!trusted && !authorIsParticipant) {
+        throw new RequestError('Kun deltagere på listen eller personer med skriveadgang til repoet kan melde at nogen har givet.');
+      }
+      const { date } = request;
+      if (!date) throw new RequestError(`Jeg kunne ikke læse datoen "${request.rawDate}". Skriv den som ÅÅÅÅ-MM-DD.`);
+      if (!isFriday(date)) throw new RequestError(`${formatDate(date)} er ikke en fredag.`);
+      if (date > today) throw new RequestError('Det kan først meldes på selve fredagen.');
+
+      const entry = date >= data.anchor ? upcoming(data, date, 1)[0] : null;
+      if (entry && entry.date === date) {
+        if (entry.cancelled) throw new RequestError(`${nice(date)} er aflyst.`);
+        if (entry.person && entry.person.name === person.name) {
+          return applyRequest(data, { ...request, type: 'mark', given: true }, { today, author, association, trusted: trustAll });
+        }
+        if (entry.person) {
+          throw new RequestError(`**${entry.person.name}** stod på programmet ${nice(date)}. Brug Ja/Nej, eller byt først.`);
+        }
+      }
+
+      const history = data.history
+        .filter((h) => h.date !== date)
+        .concat({ date, name: person.name, given: true })
+        .sort((a, b) => a.date.localeCompare(b.date));
+      const others = data.participants.filter((p) => p !== person);
+      return {
+        data: { ...data, history, participants: [...others, person] },
+        message: `✅ **${person.name}** gav morgenmad ${nice(date)}. Tak! 🥐\n\n${person.name} er rykket bagerst i køen.`,
       };
     }
 
@@ -585,7 +627,7 @@ function applyRequest(data, request, { today, author = '', association = 'NONE',
  *
  * Gemmer listen i et Google Sheet, så ingen behøver login.
  * Siden henter listen med GET og sender ændringer med POST:
- *   { action: 'join' | 'leave' | 'cancel' | 'reopen' | 'swap' | 'butter' | 'unbutter' | 'mark', name?, other?, date?, reason?, given? }
+ *   { action: 'join' | 'leave' | 'cancel' | 'reopen' | 'swap' | 'butter' | 'unbutter' | 'mark' | 'gave', name?, other?, date?, reason?, given? }
  *
  * Arkene oprettes automatisk:
  *   Data – listen som JSON i celle A1 (selve "databasen")
@@ -599,7 +641,7 @@ const SPREADSHEET_ID = '1NivBtDLpzeWHS6q6aGp6IQ8Gg42iskbLPOjtTi2L1Bw';
 const DATA_SHEET = 'Data';
 const PLAN_SHEET = 'Plan';
 const LOG_SHEET = 'Log';
-const ACTIONS = ['join', 'leave', 'cancel', 'reopen', 'swap', 'butter', 'unbutter', 'mark'];
+const ACTIONS = ['join', 'leave', 'cancel', 'reopen', 'swap', 'butter', 'unbutter', 'mark', 'gave'];
 const MAX_PARTICIPANTS = 60;
 
 function doGet() {

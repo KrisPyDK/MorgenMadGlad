@@ -266,6 +266,7 @@ svg { display: block; }
 .card__head--row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 
 #next { --delay: .9s; }
+.today { --delay: 1s; }
 #plan { --delay: 1.05s; }
 #tilmeld { --delay: 1.15s; }
 .team { --delay: 1.25s; }
@@ -1138,3 +1139,29 @@ svg { display: block; }
 }
 .mark-cycle--push { margin-left: auto; }
 .mark-cycle:hover { scale: 1.3; }
+
+/* ---------- Hvem gav i dag? ---------- */
+
+.today { overflow: hidden; background: #E8F5EA; border-color: var(--pistachio); box-shadow: 0 7px 0 #8CC79A, 0 22px 40px -24px rgb(var(--shadow-color) / .5); color: #1E4D2B; }
+.today[hidden] { display: none; }
+.today .muted { color: #3F6B4B; }
+.today h2 { padding-right: 70px; margin-bottom: 4px; }
+.today__deco { position: absolute; right: 14px; top: 8px; width: 64px; height: 64px; rotate: 12deg; animation: wobble 3s ease-in-out infinite; }
+.today__people { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.today__person {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 16px 5px 5px;
+  border-radius: 999px;
+  border: 2px solid #8CC79A;
+  background: #fff;
+  color: #1E4D2B;
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+  transition: scale .35s var(--spring), rotate .35s var(--spring), background-color .2s;
+}
+.today__person:hover { scale: 1.08; rotate: -2deg; background: #CDEBD3; }
+.today__person:active { scale: .93; }

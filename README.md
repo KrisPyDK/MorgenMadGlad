@@ -8,6 +8,7 @@ En lille, bouncy hjemmeside til GitHub Pages, der holder styr på fredagsmorgenm
 - **Hver fredag** har den næste på listen morgenbrød med.
 - **Aflys en fredag** (fælles møde, helligdag, ferie …) – så rykker den, der havde tur, til fredagen efter, og resten af listen rykker en uge med.
 - **Dagens fredag står øverst**, og på dagen kan man markere **✅ Givet** eller **❌ Ikke givet**. Markeringen kan fortrydes, og tidligere fredage i historikken kan rettes med et tryk på ✅/❌.
+- Står dagens fredag ikke i planen (f.eks. fordi listen blev oprettet i dag), vises **"Hvem gav morgenmad i dag?"**. Tryk på navnet, så rykker vedkommende bagerst i køen, og nye der tilmelder sig bagefter, kommer foran vedkommende.
 - **Genåbn** en aflyst fredag, hvis planerne ændrer sig.
 - **Byt** din fredag med en kollega – alle bytninger står i **byttelogen** på siden (og i arkets *Log*).
 - **Smør** – smørret holder flere gange. Tryk "Smør" på en fredag, når det slipper op, så vælges den næste på listen, der *ikke* har morgenmad den dag. **Smørlisten** viser hvem der skal have smør med, hvem der har haft det, og hvor mange gange.

@@ -245,3 +245,32 @@ test('markering kan rettes bagefter i historikken', () => {
   const changed = applyRequest(withHistory, { type: 'mark', date: '2026-10-09', given: false }, { ...asOwner, today: '2026-10-16' });
   assert.deepEqual(changed.data.history, [{ date: '2026-10-09', name: 'Dorte', given: false }]);
 });
+
+test('"jeg gav i dag" på en fredag uden for planen rykker personen bagerst, og nye kommer foran', () => {
+  // Listen starter først 16/10, men der blev givet morgenmad fredag 9/10 af Kbmi.
+  const solo = normalizeData({ anchor: '2026-10-16', participants: [{ name: 'Kbmi' }] }, '2026-10-09');
+  const friday = { ...asOwner, today: '2026-10-09' };
+  const gave = applyRequest(solo, { type: 'gave', name: 'kbmi', date: '2026-10-09' }, friday);
+  assert.deepEqual(gave.data.history, [{ date: '2026-10-09', name: 'Kbmi', given: true }]);
+  assert.match(gave.message, /Kbmi\*\* gav morgenmad/);
+
+  // Nu tilmelder en anden sig: hun får næste tur, ikke Kbmi.
+  const joined = applyRequest(gave.data, { type: 'join', name: 'Mette' }, friday).data;
+  assert.deepEqual(joined.participants.map((p) => p.name), ['Mette', 'Kbmi']);
+  assert.deepEqual(upcoming(joined, '2026-10-09', 3).map((e) => e.person.name), ['Mette', 'Kbmi', 'Mette']);
+
+  // Endnu en: kommer også før Kbmi, men efter Mette.
+  const third = applyRequest(joined, { type: 'join', name: 'Bo' }, friday).data;
+  assert.deepEqual(third.participants.map((p) => p.name), ['Mette', 'Bo', 'Kbmi']);
+});
+
+test('"jeg gav" afvises for fremtiden, andres fredag og aflyste dage – og bruger markering når man selv stod på', () => {
+  const friday = { ...asOwner, today: '2026-10-16' };
+  assert.throws(() => applyRequest(data, { type: 'gave', name: 'Anna', date: '2026-10-23' }, friday), /først meldes på selve fredagen/);
+  assert.throws(() => applyRequest(data, { type: 'gave', name: 'Bo', date: '2026-10-16' }, friday), /Anna\*\* stod på programmet/);
+  assert.throws(() => applyRequest(data, { type: 'gave', name: 'Ukendt', date: '2026-10-16' }, friday), /kan ikke finde/);
+  const cancelled = { ...data, cancelled: [{ date: '2026-10-16', reason: 'Møde' }] };
+  assert.throws(() => applyRequest(cancelled, { type: 'gave', name: 'Anna', date: '2026-10-16' }, friday), /er aflyst/);
+  const mine = applyRequest(data, { type: 'gave', name: 'Anna', date: '2026-10-16' }, friday);
+  assert.deepEqual(mine.data.marks, [{ date: '2026-10-16', given: true }]);
+});
