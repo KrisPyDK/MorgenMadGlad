@@ -9,7 +9,7 @@
  * (f.eks. lokalt eller på eget domæne). På GitHub Pages findes repoet selv.
  */
 export const config = {
-  apiUrl: '',
+  apiUrl: 'https://script.google.com/macros/s/AKfycbw57PO5myjtMou1yt5b4y_kYitBdcmpVebKzPJeh9LLAK3-YgikNs_Zug1yZFOXeuxTWA/exec',
   // Knappen "Bestil morgenbrød" fører hertil. Tom = ingen knap.
   orderUrl: 'https://shop.foodandco.dk/terma-lystrup/varesortiment',
   repo: 'KrisPyDK/MorgenMadGlad',
