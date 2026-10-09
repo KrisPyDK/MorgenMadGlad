@@ -13,7 +13,7 @@
  */
 
 // Arket listen gemmes i. Tom = det ark scriptet er oprettet fra (Udvidelser → Apps Script).
-const SPREADSHEET_ID = '1irWR090aEoYwSsp8o0U_YjfxElnuwXdATMLrGvQM3-A';
+const SPREADSHEET_ID = '1NivBtDLpzeWHS6q6aGp6IQ8Gg42iskbLPOjtTi2L1Bw';
 
 const DATA_SHEET = 'Data';
 const PLAN_SHEET = 'Plan';

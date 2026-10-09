@@ -48,7 +48,7 @@ Siden ligger derefter på <https://krispydk.github.io/MorgenMadGlad/>.
 
 Listen gemmes i et Google Sheet, som du ejer. Et lille Apps Script fungerer som "server" for siden. Det er gratis.
 
-> Scriptet gemmer i arket med ID'et `SPREADSHEET_ID` øverst i `apps-script/server.js`. Det er allerede sat til dit ark (*Unavngivet regneark*). Bruger du et andet ark, så ret ID'et (eller sæt det til `''` for at bruge det ark, scriptet er oprettet fra) og kør `npm run build`.
+> Scriptet gemmer i arket med ID'et `SPREADSHEET_ID` øverst i `apps-script/server.js`. Det er allerede sat til dit ark (*Morgen mad*). Bruger du et andet ark, så ret ID'et (eller sæt det til `''` for at bruge det ark, scriptet er oprettet fra) og kør `npm run build`.
 
 Gør dette på en computer. Apps Script-editoren virker ikke ordentligt på mobil.
 

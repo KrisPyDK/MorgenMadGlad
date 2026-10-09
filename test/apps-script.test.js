@@ -144,7 +144,7 @@ test('smør tilføjes, vises i planen og logges', () => {
 test('scriptet bruger dit Google Sheet', () => {
   const google = googleSandbox();
   google.get();
-  assert.deepEqual([...google.opened], ['1irWR090aEoYwSsp8o0U_YjfxElnuwXdATMLrGvQM3-A']);
+  assert.deepEqual([...google.opened], ['1NivBtDLpzeWHS6q6aGp6IQ8Gg42iskbLPOjtTi2L1Bw']);
 });
 
 test('travlt bageri: låsen er optaget', () => {
