@@ -394,10 +394,13 @@ function renderNext(entries, next) {
     note.textContent = `${skipped.map((s) => `${shortDate(s.date)} er aflyst (${s.reason || 'ingen morgenmad'})`).join(', ')}.`;
   }
 
+  // Hele fredagen er færdigbagt (100 %), også selvom dagens fredag ikke står i planen.
+  // Først dagen efter starter den forfra mod næste fredag.
   const days = daysBetween(state.today, next.date);
-  const progress = Math.max(0, Math.min(1, 1 - days / 7));
+  const baked = isFriday(state.today);
+  const progress = baked ? 1 : Math.max(0, Math.min(1, 1 - days / 7));
   oven.hidden = false;
-  $('#oven-label').textContent = days === 0 ? 'Færdigbagt! 🥐' : `Ugen er ${Math.round(progress * 100)} % bagt`;
+  $('#oven-label').textContent = baked ? 'Færdigbagt! 🥐' : `Ugen er ${Math.round(progress * 100)} % bagt`;
   const fill = $('#oven-fill');
   requestAnimationFrame(() => {
     fill.style.width = `${Math.max(4, progress * 100)}%`;
