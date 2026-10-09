@@ -4,7 +4,7 @@
  * samtidig), gemmer data.json via GitHub API'et og lukker issues med svar.
  */
 import { normalizeData, settle, todayIn } from '../js/schedule.js';
-import { RequestError, applyRequest, parseRequest } from './requests.js';
+import { RequestError, applyRequest, parseRequest } from '../js/requests.js';
 
 const FOOTER = '\n\n<sub>🤖 Morgenmadsrobotten</sub>';
 

@@ -9,7 +9,7 @@ import {
   parseIssueForm,
   parseRequest,
   requestType,
-} from '../scripts/requests.js';
+} from '../js/requests.js';
 
 const today = '2026-10-12';
 const data = normalizeData(

@@ -5,6 +5,7 @@
   "description": "Hvem tager morgenbrød med på fredag?",
   "scripts": {
     "test": "node --test test/*.test.js",
+    "build": "node scripts/build-apps-script.js",
     "start": "npx --yes http-server -c-1 -p 8080 ."
   }
 }

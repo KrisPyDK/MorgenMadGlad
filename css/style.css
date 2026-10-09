@@ -421,7 +421,7 @@ svg { display: block; }
   color: #3E2415;
   overflow-wrap: anywhere;
 }
-.next__name.rubber { animation: rubber 1s var(--spring-strong) both; }
+.next__name.rubber { animation: rubber 1s var(--spring-strong) both; transform-origin: 0 60%; }
 @keyframes rubber {
   0% { transform: scale(.4, .4); opacity: 0; }
   35% { transform: scale(1.25, .8); opacity: 1; }
@@ -464,6 +464,7 @@ svg { display: block; }
   .next { grid-template-columns: 1fr; justify-items: center; text-align: center; padding: 30px 18px 24px; }
   .next__plate { width: 140px; height: 140px; }
   .next__pastry { width: 100px; height: 100px; }
+  .next__name.rubber { transform-origin: 50% 60%; }
   .oven { justify-content: center; }
 }
 
@@ -799,6 +800,30 @@ svg { display: block; }
 }
 .toast strong { font-family: var(--font-display); font-size: 1.1rem; font-weight: 600; }
 .toast.show { translate: -50% 0; opacity: 1; }
+.toast--error { background: var(--jam); color: #fff; }
+.toast--error.show { animation: shake .5s var(--spring) .3s; }
+
+/* ---------- Gemmer… ---------- */
+
+.saving {
+  position: fixed;
+  top: 14px;
+  right: 14px;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px 8px 10px;
+  border-radius: 999px;
+  background: var(--card);
+  border: 3px solid var(--line);
+  box-shadow: 0 4px 0 var(--line-strong);
+  font-family: var(--font-display);
+  font-weight: 600;
+  animation: pop-in .5s var(--spring);
+}
+.saving[hidden] { display: none; }
+.saving svg { width: 26px; height: 26px; animation: spin 1.2s var(--spring) infinite; }
 
 /* ---------- Konfetti af wienerbrød ---------- */
 

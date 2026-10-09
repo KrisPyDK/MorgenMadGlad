@@ -1,8 +1,8 @@
 /**
- * Fortolker og udfører anmodninger der kommer ind som GitHub-issues.
- * Ren logik uden netværk, så det kan testes direkte (se test/requests.test.js).
+ * Fortolker og udfører anmodninger (tilmeld, afmeld, aflys, genåbn).
+ * Ren logik uden netværk, som deles af siden, GitHub-robotten og Google-scriptet.
  */
-import { formatDate, isFriday, isValidDate, nextDates, upcoming } from '../js/schedule.js';
+import { formatDate, isFriday, isValidDate, nextDates, upcoming } from './schedule.js';
 
 export class RequestError extends Error {}
 
@@ -98,13 +98,14 @@ const nice = (iso) => formatDate(iso, { weekday: 'long', day: 'numeric', month: 
  * Udfører en anmodning på (allerede settled) data.
  * Returnerer { data, message } eller kaster RequestError med en dansk forklaring.
  *
- * Rettigheder:
+ * Rettigheder (via GitHub-issues):
  *   - Alle med en GitHub-konto kan tilmelde sig.
  *   - Man kan afmelde sig selv; ejere/collaborators kan afmelde alle.
  *   - Deltagere og ejere/collaborators kan aflyse og genåbne fredage.
+ * Med `trusted: true` (Google Sheet uden login) må alle det hele.
  */
-export function applyRequest(data, request, { today, author = '', association = 'NONE' }) {
-  const trusted = TRUSTED.has(association);
+export function applyRequest(data, request, { today, author = '', association = 'NONE', trusted: trustAll = false }) {
+  const trusted = trustAll || TRUSTED.has(association);
   const isAuthor = (person) => Boolean(person.github && author && sameName(person.github, author));
   const authorIsParticipant = data.participants.some(isAuthor);
 

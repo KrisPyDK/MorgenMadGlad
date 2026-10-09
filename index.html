@@ -161,7 +161,7 @@
             <li><svg aria-hidden="true"><use href="#p-spandauer"/></svg><span><b>Hver fredag</b> tager den næste på listen morgenbrød med.</span></li>
             <li><svg aria-hidden="true"><use href="#p-kanelsnegl"/></svg><span><b>Ingen morgenmad?</b> Aflys fredagen – så rykker alle en uge.</span></li>
           </ol>
-          <p class="muted small">Knapperne åbner et GitHub-issue, som du bare trykker <b>Create</b> på. Robotten opdaterer listen på cirka et minut.</p>
+          <p class="muted small" id="how-note"></p>
         </section>
       </div>
     </div>
@@ -202,6 +202,22 @@
     </form>
   </dialog>
 
+  <dialog class="dialog" id="confirm-dialog" aria-labelledby="confirm-title">
+    <form class="dialog__form" id="confirm-form">
+      <div class="dialog__art" aria-hidden="true"><svg><use href="#p-kanelsnegl"/></svg></div>
+      <h3 id="confirm-title"></h3>
+      <p class="dialog__effect" id="confirm-text"></p>
+      <div class="dialog__actions">
+        <button type="button" class="btn btn--soft" data-close>Fortryd</button>
+        <button type="submit" class="btn btn--jam" id="confirm-ok">OK</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div class="saving" id="saving" role="status" hidden>
+    <svg aria-hidden="true"><use href="#p-kanelsnegl"/></svg>
+    <span>Gemmer…</span>
+  </div>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
   <div class="fx" id="fx" aria-hidden="true"></div>
 </body>

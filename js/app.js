@@ -1,10 +1,12 @@
 import { config } from './config.js';
+import { RequestError, applyRequest, cleanName } from './requests.js';
 import {
   daysBetween,
   formatDate,
   isoWeek,
   nextDates,
   normalizeData,
+  settle,
   todayIn,
   unsettled,
   upcoming,
@@ -15,15 +17,20 @@ const AVATAR_COLORS = ['#E04F67', '#C8742E', '#6FB47F', '#6C7FD8', '#D9A21B', '#
 const CRUMB_COLORS = ['#D9944A', '#F2B441', '#B5652A', '#FFD95A', '#FFF3DF', '#E04F67'];
 const POLL_INTERVAL = 15_000;
 const POLL_ATTEMPTS = 24;
+const REFRESH_INTERVAL = 60_000;
 
 const $ = (selector) => document.querySelector(selector);
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 
 const state = {
+  // 'sheet': gemmer direkte i Google Sheet (ingen login). 'github': via GitHub-issues.
+  mode: config.apiUrl ? 'sheet' : 'github',
   repo: detectRepo(),
   today: todayIn(),
-  raw: '',
+  json: '',
   data: null,
+  changes: 0,
+  saving: 0,
   weeks: config.weeksAhead,
   firstRender: true,
   poll: null,
@@ -122,7 +129,146 @@ function detectRepo() {
   return config.repo;
 }
 
-/* ---------- GitHub-anmodninger ---------- */
+/* ---------- Lagring ---------- */
+
+const CACHE_KEY = `morgenmadglad:${state.mode}`;
+const plain = (text) => String(text ?? '').replace(/\*\*/g, '');
+
+async function fetchData() {
+  if (state.mode === 'sheet') {
+    const url = new URL(config.apiUrl);
+    url.searchParams.set('t', Date.now());
+    const response = await fetch(url);
+    const body = await response.json();
+    if (!body.ok) throw new Error(body.error);
+    return body.data;
+  }
+  const response = await fetch(`data.json?t=${Date.now()}`, { cache: 'no-store' });
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  return response.json();
+}
+
+/** Viser nye data – men kun hvis noget faktisk har ændret sig. */
+function setData(data) {
+  const json = JSON.stringify(data);
+  if (json === state.json) return false;
+  state.json = json;
+  state.data = data;
+  render();
+  try {
+    localStorage.setItem(CACHE_KEY, json);
+  } catch {
+    /* privat vindue o.l. – siden virker fint uden */
+  }
+  return true;
+}
+
+function loadCached() {
+  try {
+    const json = localStorage.getItem(CACHE_KEY);
+    if (json) setData(normalizeData(JSON.parse(json), state.today));
+  } catch {
+    /* ignorer en ødelagt cache */
+  }
+}
+
+async function load() {
+  const changes = state.changes;
+  const raw = await fetchData();
+  // Er der gemt noget imens, er svaret forældet.
+  if (changes !== state.changes || state.saving) return false;
+  state.today = todayIn();
+  return setData(normalizeData(raw, state.today));
+}
+
+function startAutoRefresh() {
+  const refresh = () => {
+    if (!document.hidden && !state.saving) load().catch(() => {});
+  };
+  setInterval(refresh, REFRESH_INTERVAL);
+  document.addEventListener('visibilitychange', refresh);
+}
+
+/** Kører handlingen med samme logik som serveren. Giver { data, message } eller { error }. */
+function tryRequest(request) {
+  if (!state.data) return { error: 'Listen er ikke hentet endnu – prøv igen om et øjeblik.' };
+  try {
+    return applyRequest(settle(state.data, state.today), request, { today: state.today, trusted: true });
+  } catch (error) {
+    if (error instanceof RequestError) return { error: plain(error.message) };
+    throw error;
+  }
+}
+
+let queue = Promise.resolve();
+
+/**
+ * Udfører en handling. Med Google Sheet vises ændringen med det samme og gemmes
+ * bagefter (én ad gangen); med GitHub åbnes et forudfyldt issue.
+ * Giver en fejlbesked, eller null hvis alt gik godt.
+ */
+function perform(request) {
+  const check = tryRequest(request);
+  if (check.error) return Promise.resolve(check.error);
+  if (state.mode === 'github') {
+    openIssue(request);
+    return Promise.resolve(null);
+  }
+  const run = queue.then(() => save(request));
+  queue = run.catch(() => null);
+  return run;
+}
+
+async function save(request) {
+  const before = state.data;
+  const local = tryRequest(request);
+  if (local.error) return local.error;
+
+  state.changes++;
+  setData(local.data);
+  setSaving(1);
+  try {
+    const response = await fetch(config.apiUrl, {
+      method: 'POST',
+      body: JSON.stringify({ action: request.type, name: request.name, date: request.date, reason: request.reason }),
+    });
+    const body = await response.json();
+    if (body.data) setData(normalizeData(body.data, state.today));
+    if (!body.ok) {
+      if (!body.data) setData(before);
+      return plain(body.error);
+    }
+    const [title, ...rest] = plain(local.message).split('\n\n');
+    toast(title, rest.join(' '));
+    return null;
+  } catch {
+    setData(before);
+    return 'Kunne ikke gemme – tjek forbindelsen og prøv igen.';
+  } finally {
+    state.changes++;
+    setSaving(-1);
+  }
+}
+
+function setSaving(delta) {
+  state.saving += delta;
+  const el = $('#saving');
+  el.hidden = state.saving === 0;
+}
+
+function report(error) {
+  if (error) toast('Ups!', error, { error: true });
+}
+
+/* ---------- GitHub-issues (når der ikke er et Google Sheet) ---------- */
+
+const ISSUE_HINT = 'Tryk på den grønne "Create"-knap på GitHub – så opdaterer listen sig selv om et minuts tid.';
+const ISSUES = {
+  join: (r) => ['tilmeld.yml', `🥐 Tilmeld: ${r.name}`, { navn: r.name }, `Næsten på listen, ${r.name}!`],
+  leave: (r) => ['afmeld.yml', `👋 Afmeld: ${r.name}`, { navn: r.name }, `Afmelder ${r.name}…`],
+  cancel: (r) => ['aflys.yml', `😴 Aflys: ${r.date}`, { fredag: r.date, grund: r.reason }, `Aflyser ${longDate(r.date)}…`],
+  reopen: (r) => ['genaabn.yml', `🎉 Genåbn: ${r.date}`, { fredag: r.date }, `Genåbner ${longDate(r.date)}…`],
+};
 
 function issueUrl(template, title, fields = {}) {
   const url = new URL(`https://github.com/${state.repo}/issues/new`);
@@ -132,26 +278,11 @@ function issueUrl(template, title, fields = {}) {
   return url.href;
 }
 
-function sendRequest(url, title, text) {
-  window.open(url, '_blank', 'noopener');
-  toast(title, text);
+function openIssue(request) {
+  const [template, title, fields, message] = ISSUES[request.type](request);
+  window.open(issueUrl(template, title, fields), '_blank', 'noopener');
+  toast(message, ISSUE_HINT);
   watchForUpdates();
-}
-
-const REQUEST_HINT = 'Tryk på den grønne "Create"-knap på GitHub – så opdaterer listen sig selv om et minuts tid.';
-
-/* ---------- Data ---------- */
-
-async function load() {
-  const response = await fetch(`data.json?t=${Date.now()}`, { cache: 'no-store' });
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  const text = await response.text();
-  if (text === state.raw) return false;
-  state.raw = text;
-  state.today = todayIn();
-  state.data = normalizeData(JSON.parse(text), state.today);
-  render();
-  return true;
 }
 
 function watchForUpdates() {
@@ -392,49 +523,52 @@ function focusJoin(event) {
   setTimeout(() => $('#join-name').focus({ preventScroll: true }), 400);
 }
 
-function join(event) {
+function showJoinError(message) {
+  const error = $('#join-error');
+  const input = $('#join-name');
+  error.textContent = message;
+  error.hidden = false;
+  replay(input, 'shake');
+  input.focus();
+}
+
+async function join(event) {
   event.preventDefault();
   const input = $('#join-name');
-  const error = $('#join-error');
-  const name = input.value.replace(/\s+/g, ' ').trim();
-  const taken = state.data?.participants.find((p) => p.name.toLowerCase() === name.toLowerCase());
+  const request = { type: 'join', name: cleanName(input.value) };
+  $('#join-error').hidden = true;
 
-  error.hidden = true;
-  if (!name || taken) {
-    error.textContent = taken ? `${taken.name} står allerede på listen.` : 'Skriv lige dit navn først 🙂';
-    error.hidden = false;
-    replay(input, 'shake');
-    input.focus();
-    return;
-  }
+  if (!request.name) return showJoinError('Skriv lige dit navn først 🙂');
+  const problem = tryRequest(request).error;
+  if (problem) return showJoinError(problem);
 
-  sendRequest(issueUrl('tilmeld.yml', `🥐 Tilmeld: ${name}`, { navn: name }), `Næsten på listen, ${name}!`, REQUEST_HINT);
-  const rect = event.submitter?.getBoundingClientRect() ?? input.getBoundingClientRect();
+  const rect = (event.submitter ?? input).getBoundingClientRect();
   burst(rect.left + rect.width / 2, rect.top + rect.height / 2, 22);
   input.value = '';
+  const error = await perform(request);
+  if (error) {
+    input.value = request.name;
+    showJoinError(error);
+  }
 }
 
-function leave(person) {
-  sendRequest(
-    issueUrl('afmeld.yml', `👋 Afmeld: ${person.name}`, { navn: person.name }),
-    `Afmelder ${person.name}…`,
-    REQUEST_HINT,
-  );
+async function leave(person) {
+  const confirmed = await confirmDialog({
+    title: `Afmeld ${person.name}?`,
+    text: [h('b', {}, person.name), ' bliver taget af listen, og alle efter rykker en plads frem.'],
+    ok: 'Afmeld',
+  });
+  if (confirmed) report(await perform({ type: 'leave', name: person.name }));
 }
 
-function reopen(entry) {
-  sendRequest(
-    issueUrl('genaabn.yml', `🎉 Genåbn: ${entry.date}`, { fredag: entry.date }),
-    `Genåbner ${longDate(entry.date)}…`,
-    REQUEST_HINT,
-  );
+async function reopen(entry) {
+  report(await perform({ type: 'reopen', date: entry.date }));
 }
 
 let cancelEntry = null;
 
 function openCancel(entry) {
   cancelEntry = entry;
-  const dialog = $('#cancel-dialog');
   $('#cancel-title').textContent = `Ingen morgenmad ${longDate(entry.date)}?`;
 
   const effect = $('#cancel-effect');
@@ -454,12 +588,25 @@ function openCancel(entry) {
 
   $('#cancel-reason').value = '';
   for (const button of document.querySelectorAll('.reason')) button.classList.remove('is-selected');
+  openDialog($('#cancel-dialog'));
+}
+
+async function confirmCancel(event) {
+  event.preventDefault();
+  if (!cancelEntry) return;
+  const request = { type: 'cancel', date: cancelEntry.date, reason: $('#cancel-reason').value.trim() };
+  closeDialog($('#cancel-dialog'));
+  report(await perform(request));
+}
+
+/* ---------- Dialoger ---------- */
+
+function openDialog(dialog) {
   dialog.classList.remove('closing');
   dialog.showModal();
 }
 
-function closeDialog() {
-  const dialog = $('#cancel-dialog');
+function closeDialog(dialog) {
   if (!dialog.open) return;
   if (reducedMotion.matches) {
     dialog.close();
@@ -475,16 +622,21 @@ function closeDialog() {
   dialog.addEventListener('animationend', done);
 }
 
-function confirmCancel(event) {
-  event.preventDefault();
-  if (!cancelEntry) return;
-  const reason = $('#cancel-reason').value.trim();
-  sendRequest(
-    issueUrl('aflys.yml', `😴 Aflys: ${cancelEntry.date}`, { fredag: cancelEntry.date, grund: reason }),
-    `Aflyser ${longDate(cancelEntry.date)}…`,
-    REQUEST_HINT,
-  );
-  closeDialog();
+let confirmResolve = null;
+
+function confirmDialog({ title, text, ok }) {
+  $('#confirm-title').textContent = title;
+  $('#confirm-text').replaceChildren(...text);
+  $('#confirm-ok').textContent = ok;
+  openDialog($('#confirm-dialog'));
+  return new Promise((resolve) => {
+    confirmResolve = resolve;
+  });
+}
+
+function answerConfirm(value) {
+  confirmResolve?.(value);
+  confirmResolve = null;
 }
 
 /* ---------- Bouncy effekter ---------- */
@@ -620,9 +772,10 @@ function celebrate() {
 }
 
 let toastTimer;
-function toast(title, text) {
+function toast(title, text, { error = false } = {}) {
   const el = $('#toast');
   el.replaceChildren(h('strong', {}, title), text ? h('span', {}, text) : null);
+  el.classList.toggle('toast--error', error);
   el.classList.remove('show');
   void el.offsetWidth;
   el.classList.add('show');
@@ -651,16 +804,19 @@ function init() {
     burst(event.clientX, event.clientY, 12);
   });
 
+  for (const dialog of document.querySelectorAll('.dialog')) {
+    dialog.querySelector('[data-close]').addEventListener('click', () => closeDialog(dialog));
+    dialog.addEventListener('click', (event) => {
+      if (event.target === dialog) closeDialog(dialog);
+    });
+    dialog.addEventListener('cancel', (event) => {
+      event.preventDefault();
+      closeDialog(dialog);
+    });
+  }
+
   const dialog = $('#cancel-dialog');
   $('#cancel-form').addEventListener('submit', confirmCancel);
-  dialog.querySelector('[data-close]').addEventListener('click', closeDialog);
-  dialog.addEventListener('click', (event) => {
-    if (event.target === dialog) closeDialog();
-  });
-  dialog.addEventListener('cancel', (event) => {
-    event.preventDefault();
-    closeDialog();
-  });
   for (const button of dialog.querySelectorAll('.reason')) {
     button.addEventListener('click', () => {
       for (const other of dialog.querySelectorAll('.reason')) other.classList.toggle('is-selected', other === button);
@@ -669,10 +825,31 @@ function init() {
     });
   }
 
+  $('#confirm-form').addEventListener('submit', (event) => {
+    event.preventDefault();
+    answerConfirm(true);
+    closeDialog($('#confirm-dialog'));
+  });
+  $('#confirm-dialog').addEventListener('close', () => answerConfirm(false));
+
+  $('#how-note').replaceChildren(
+    ...(state.mode === 'sheet'
+      ? ['Alt gemmes med det samme – ', h('b', {}, 'ingen login'), '. Listen opdaterer sig selv hvert minut.']
+      : ['Knapperne åbner et GitHub-issue, som du bare trykker ', h('b', {}, 'Create'), ' på. Robotten opdaterer listen på cirka et minut.']),
+  );
+
   setInterval(waveTitle, 7000);
 
+  if (state.mode === 'sheet') {
+    loadCached();
+    startAutoRefresh();
+  }
   load().catch((error) => {
     console.error(error);
+    if (state.data) {
+      toast('Kunne ikke hente den nyeste liste', 'Viser den senest gemte – prøver igen om lidt.', { error: true });
+      return;
+    }
     $('#next-eyebrow').textContent = 'Øv!';
     $('#next-name').textContent = 'Listen kunne ikke hentes';
     $('#next-date').replaceChildren(
