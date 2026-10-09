@@ -10,6 +10,7 @@ En lille, bouncy hjemmeside til GitHub Pages, der holder styr på fredagsmorgenm
 - **Dagens fredag står øverst**, og på dagen kan man markere **✅ Givet** eller **❌ Ikke givet**. Markeringen kan fortrydes, og tidligere fredage i historikken kan rettes med et tryk på ✅/❌.
 - Står dagens fredag ikke i planen (f.eks. fordi listen blev oprettet i dag), vises **"Hvem gav morgenmad i dag?"**. Tryk på navnet, så rykker vedkommende bagerst i køen, og nye der tilmelder sig bagefter, kommer foran vedkommende.
 - **Genåbn** en aflyst fredag, hvis planerne ændrer sig.
+- **Ret rækkefølgen** – under *Bagerholdet* åbner "Ret rækkefølge" pile (▲▼), så man kan flytte folk op og ned. Hvert flyt er et byt mellem to naboer og står derfor i byttelogen. Kræver Google Sheet-opsætningen.
 - **Byt** din fredag med en kollega – alle bytninger står i **byttelogen** på siden (og i arkets *Log*).
 - **Smør** – smørret holder flere gange. Tryk "Smør" på en fredag, når det slipper op, så vælges den næste på listen, der *ikke* har morgenmad den dag. **Smørlisten** viser hvem der skal have smør med, hvem der har haft det, og hvor mange gange.
 - **Nedtælling til bestilling** – ved siden af knappen tæller en timer ned til sidste frist: torsdag kl. 12 (dansk tid) dagen før fredagen. Den bliver rød den sidste time. Ret `orderDaysBefore`/`orderHour` i `js/config.js` hvis fristen ændrer sig.

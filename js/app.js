@@ -565,7 +565,17 @@ function renderTeam() {
     if (!state.firstRender) replay(count, 'boing');
   }
 
+  // Rækkefølgen ændres med de samme "byt" som Google-scriptet allerede kender, så den kun virker med Google Sheet.
+  const canEdit = state.mode === 'sheet' && people.length > 1;
+  if (!canEdit) state.editOrder = false;
+  const editButton = $('#team-edit');
+  editButton.hidden = !canEdit;
+  editButton.setAttribute('aria-pressed', String(Boolean(state.editOrder)));
+  editButton.textContent = state.editOrder ? 'Færdig' : 'Ret rækkefølge';
+  const editing = state.editOrder;
+
   const list = $('#team');
+  list.classList.toggle('is-editing', Boolean(editing));
   if (!people.length) {
     list.replaceChildren(h('li', { class: 'muted' }, 'Ingen bagere endnu – bliv den første!'));
     return;
@@ -575,20 +585,48 @@ function renderTeam() {
       h(
         'li',
         { class: 'member', vars: { '--i': i, '--base-delay': state.firstRender ? '1.3s' : '0s' } },
+        editing ? h('span', { class: 'member__pos' }, String(i + 1)) : null,
         avatar(person.name),
         h('span', { class: 'member__name' }, person.name),
         dates.has(person.name) ? h('span', { class: 'member__next' }, shortDate(dates.get(person.name))) : null,
-        h(
-          'button',
-          {
-            class: 'member__remove',
-            type: 'button',
-            title: `Afmeld ${person.name}`,
-            'aria-label': `Afmeld ${person.name}`,
-            onclick: () => leave(person),
-          },
-          '×',
-        ),
+        editing
+          ? [
+              h(
+                'button',
+                {
+                  class: 'member__move',
+                  type: 'button',
+                  disabled: i === 0,
+                  title: `Flyt ${person.name} op`,
+                  'aria-label': `Flyt ${person.name} op`,
+                  onclick: async () => report(await perform({ type: 'swap', name: person.name, other: people[i - 1].name })),
+                },
+                '▲',
+              ),
+              h(
+                'button',
+                {
+                  class: 'member__move',
+                  type: 'button',
+                  disabled: i === people.length - 1,
+                  title: `Flyt ${person.name} ned`,
+                  'aria-label': `Flyt ${person.name} ned`,
+                  onclick: async () => report(await perform({ type: 'swap', name: person.name, other: people[i + 1].name })),
+                },
+                '▼',
+              ),
+            ]
+          : h(
+              'button',
+              {
+                class: 'member__remove',
+                type: 'button',
+                title: `Afmeld ${person.name}`,
+                'aria-label': `Afmeld ${person.name}`,
+                onclick: () => leave(person),
+              },
+              '×',
+            ),
       ),
     ),
   );
@@ -1214,6 +1252,11 @@ function init() {
       ? ['Alt gemmes med det samme – ', h('b', {}, 'ingen login'), '. Listen opdaterer sig selv hvert minut.']
       : ['Knapperne åbner et GitHub-issue, som du bare trykker ', h('b', {}, 'Create'), ' på. Robotten opdaterer listen på cirka et minut.']),
   );
+
+  $('#team-edit').addEventListener('click', () => {
+    state.editOrder = !state.editOrder;
+    renderTeam();
+  });
 
   setInterval(waveTitle, 7000);
   setInterval(tickOrder, 1000);
