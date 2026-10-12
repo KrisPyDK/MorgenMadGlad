@@ -1069,7 +1069,14 @@ function closeDialog(dialog) {
 
 let confirmResolve = null;
 
-function confirmDialog({ title, text, ok }) {
+let confirmPin = false;
+
+function confirmDialog({ title, text, ok, pin = false }) {
+  confirmPin = Boolean(pin && config.clearPin);
+  const input = $('#confirm-pin');
+  input.hidden = !confirmPin;
+  input.value = '';
+  $('#confirm-error').hidden = true;
   $('#confirm-title').textContent = title;
   $('#confirm-text').replaceChildren(...text);
   $('#confirm-ok').textContent = ok;
@@ -1271,8 +1278,19 @@ function init() {
   }
 
   $('#swap-form').addEventListener('submit', confirmSwap);
+  $('#confirm-pin').addEventListener('input', () => {
+    $('#confirm-error').hidden = true;
+  });
   $('#confirm-form').addEventListener('submit', (event) => {
     event.preventDefault();
+    if (confirmPin && $('#confirm-pin').value.trim() !== String(config.clearPin)) {
+      const error = $('#confirm-error');
+      error.textContent = 'Forkert pinkode.';
+      error.hidden = false;
+      replay($('#confirm-pin'), 'shake');
+      $('#confirm-pin').select();
+      return;
+    }
     answerConfirm(true);
     closeDialog($('#confirm-dialog'));
   });
@@ -1303,6 +1321,7 @@ function init() {
       title: 'Ryd byttelogen?',
       text: ['Alle bytninger fjernes fra loggen. Rækkefølgen på listen ændres ikke.'],
       ok: 'Ryd',
+      pin: true,
     });
     if (confirmed) report(await perform({ type: 'clearswaps' }));
   });

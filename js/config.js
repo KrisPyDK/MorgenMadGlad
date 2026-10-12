@@ -12,6 +12,9 @@ export const config = {
   apiUrl: 'https://script.google.com/macros/s/AKfycbw57PO5myjtMou1yt5b4y_kYitBdcmpVebKzPJeh9LLAK3-YgikNs_Zug1yZFOXeuxTWA/exec',
   // Knappen "Bestil morgenbrød" fører hertil. Tom = ingen knap.
   // Sidste frist for at bestille: dagen før fredagen (1 = torsdag) kl. 12 dansk tid.
+  // Pinkode der kræves for at rydde byttelogen. Tom = ingen kode. OBS: koden står i det offentlige repo,
+  // så den er en blød lås mod fejltryk – ikke sikkerhed.
+  clearPin: '1234',
   orderDaysBefore: 1,
   orderHour: 12,
   orderUrl: 'https://shop.foodandco.dk/terma-lystrup/varesortiment',
