@@ -310,6 +310,58 @@ export function applyRequest(data, request, { today, author = '', association = 
       };
     }
 
+    case 'order': {
+      if (!trusted && !authorIsParticipant) {
+        throw new RequestError('Kun deltagere på listen eller personer med skriveadgang til repoet kan markere bestillinger.');
+      }
+      const { date } = request;
+      checkFriday(request, today);
+      const others = (data.ordered || []).filter((d) => d !== date);
+      const on = request.given !== false;
+      return {
+        data: { ...data, ordered: on ? [...others, date].sort() : others },
+        message: on ? `🛒 Morgenmaden til ${nice(date)} er bestilt ✅` : `Bestillingen til ${nice(date)} er fjernet.`,
+      };
+    }
+
+    case 'butterpast':
+    case 'unbutterpast': {
+      if (!trusted && !authorIsParticipant) {
+        throw new RequestError('Kun deltagere på listen eller personer med skriveadgang til repoet kan rette smørlisten.');
+      }
+      const past = data.butterPast || [];
+      const date = request.date || today;
+      if (date > today) throw new RequestError('Datoen ligger i fremtiden. Brug "Smør"-knappen på en fredag i stedet.');
+
+      if (request.type === 'butterpast') {
+        const person = data.participants.find((p) => request.name && sameName(p.name, request.name));
+        if (!person) throw new RequestError(`Jeg kan ikke finde **${request.name || '(intet navn)'}** på listen.`);
+        if (past.some((b) => b.name === person.name && b.date === date)) {
+          throw new RequestError(`**${person.name}** står allerede som havde smør med ${nice(date)}.`);
+        }
+        return {
+          data: { ...data, butterPast: [...past, { date, name: person.name }].sort((a, b) => a.date.localeCompare(b.date)) },
+          message: `🧈 **${person.name}** står nu som havde smør med ${nice(date)}.`,
+        };
+      }
+
+      const match = past.filter((b) => request.name && sameName(b.name, request.name) && (!request.date || b.date === request.date));
+      if (!match.length) throw new RequestError('Jeg kan ikke finde det smør på listen.');
+      const gone = match[match.length - 1];
+      return {
+        data: { ...data, butterPast: past.filter((b) => b !== gone) },
+        message: `Smørret ${nice(gone.date)} (${gone.name}) er fjernet fra listen. 🧈`,
+      };
+    }
+
+    case 'clearswaps': {
+      if (!trusted && !authorIsParticipant) {
+        throw new RequestError('Kun deltagere på listen eller personer med skriveadgang til repoet kan rydde byttelogen.');
+      }
+      if (!(data.swaps || []).length) throw new RequestError('Byttelogen er allerede tom.');
+      return { data: { ...data, swaps: [] }, message: 'Byttelogen er ryddet. 🧹' };
+    }
+
     case 'butter':
     case 'unbutter': {
       const { date } = request;

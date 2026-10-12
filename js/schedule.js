@@ -14,6 +14,8 @@
  *                 plads den `date`, så a tog bFrom og b tog aFrom.
  *   marks         Markeringer af om morgenmaden blev givet: [{ date, given: true|false }].
  *                 Når fredagen er overstået, flyttes den til history som { ..., given }.
+ *   ordered       Fredage hvor morgenbrødet er bestilt: ['2026-10-16', ...].
+ *   butterPast    Manuelt tilføjet smør der allerede er taget med: [{ date, name }].
  *   butter        Fredage hvor der skal købes smør: [{ date, name }]. `name`
  *                 vælges når smørret tilføjes (se pickButter). Tidligere
  *                 smør står i history som { ..., butter: navn }.
@@ -120,6 +122,10 @@ export function normalizeData(raw, today) {
     cancelled: [...cancelled.values()].sort((a, b) => a.date.localeCompare(b.date)),
     history: Array.isArray(source.history) ? source.history.filter((h) => h && isValidDate(h.date)) : [],
     marks: (Array.isArray(source.marks) ? source.marks : []).filter((m) => m && isFriday(m.date) && typeof m.given === 'boolean'),
+    ordered: [...new Set((Array.isArray(source.ordered) ? source.ordered : []).filter((d) => isFriday(d)))].sort(),
+    butterPast: (Array.isArray(source.butterPast) ? source.butterPast : [])
+      .filter((b) => b && isValidDate(b.date) && typeof b.name === 'string' && b.name)
+      .sort((a, b) => a.date.localeCompare(b.date)),
     swaps: Array.isArray(source.swaps) ? source.swaps.filter((s) => s && isValidDate(s.date) && s.a && s.b) : [],
     butter: (Array.isArray(source.butter) ? source.butter : [])
       .map((b) => (typeof b === 'string' ? { date: b } : { ...b }))
@@ -230,6 +236,7 @@ export function settle(data, today) {
     history: history.slice(-MAX_HISTORY),
     butter,
     marks: marks.filter((m) => m.date >= target),
+    ordered: (data.ordered || []).filter((d) => d >= target),
   };
 }
 
@@ -243,6 +250,7 @@ export function lastButter(data) {
   };
   for (const entry of data.history) note(entry.butter, entry.date);
   for (const entry of data.butter || []) note(entry.name, entry.date);
+  for (const entry of data.butterPast || []) note(entry.name, entry.date);
   return last;
 }
 

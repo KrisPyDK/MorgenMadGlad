@@ -168,3 +168,19 @@ test('bestillingsfristen er torsdag kl. 12 dansk tid – både sommer- og vinter
   assert.equal(iso(deadlineFor('2026-04-03')), '2026-04-02T10:00:00.000Z'); // efter skiftet
   assert.equal(iso(deadlineFor('2026-10-30')), '2026-10-29T11:00:00.000Z'); // efter skiftet til vintertid (25. okt.)
 });
+
+test('bestilt og manuelt smør normaliseres, og gammel bestilling ryddes når fredagen er gået', () => {
+  const data = normalizeData(
+    {
+      anchor: '2026-10-16',
+      participants: ['Anna', 'Bo'],
+      ordered: ['2026-10-23', '2026-10-16', '2026-10-16', '2026-10-17'],
+      butterPast: [{ date: '2026-10-05', name: 'Bo' }, { date: 'x', name: 'Anna' }, { date: '2026-09-01', name: 'Anna' }],
+    },
+    '2026-10-12',
+  );
+  assert.deepEqual(data.ordered, ['2026-10-16', '2026-10-23']);
+  assert.deepEqual(data.butterPast.map((b) => b.name), ['Anna', 'Bo']);
+  assert.deepEqual(settle(data, '2026-10-20').ordered, ['2026-10-23']);
+  assert.deepEqual(settle(data, '2026-10-20').butterPast, data.butterPast);
+});

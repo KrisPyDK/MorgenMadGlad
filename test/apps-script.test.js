@@ -180,6 +180,24 @@ test('jeg gav i dag: kun dig på listen, og listen starter først næste fredag'
   assert.deepEqual(plain(google.sheets.get('Plan').values.slice(1, 3).map((row) => row[1])), ['Mette', 'KBMI']);
 });
 
+test('bestilt-markering, manuelt smør og ryd byttelog gemmes i arket', () => {
+  const google = googleSandbox({ today: '2026-10-12' });
+  for (const name of ['Mette', 'Bo', 'Carl']) google.post({ action: 'join', name });
+
+  assert.deepEqual(plain(google.post({ action: 'order', date: '2026-10-16', given: true }).data.ordered), ['2026-10-16']);
+  assert.deepEqual(plain(google.post({ action: 'order', date: '2026-10-16', given: false }).data.ordered), []);
+
+  const past = google.post({ action: 'butterpast', name: 'Mette', date: '2026-10-05' });
+  assert.deepEqual(plain(past.data.butterPast), [{ date: '2026-10-05', name: 'Mette' }]);
+  assert.equal(google.post({ action: 'unbutterpast', name: 'Mette', date: '2026-10-05' }).ok, true);
+
+  google.post({ action: 'swap', name: 'Mette', other: 'Bo' });
+  const cleared = google.post({ action: 'clearswaps' });
+  assert.deepEqual(plain(cleared.data.swaps), []);
+  assert.deepEqual(plain(cleared.data.participants.map((p) => p.name)), ['Bo', 'Mette', 'Carl']);
+  assert.deepEqual(plain(google.sheets.get('Log').rows.map((row) => row[1]).slice(-2)), ['swap', 'clearswaps']);
+});
+
 test('scriptet bruger dit Google Sheet', () => {
   const google = googleSandbox();
   google.get();

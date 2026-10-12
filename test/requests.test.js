@@ -274,3 +274,42 @@ test('"jeg gav" afvises for fremtiden, andres fredag og aflyste dage – og brug
   const mine = applyRequest(data, { type: 'gave', name: 'Anna', date: '2026-10-16' }, friday);
   assert.deepEqual(mine.data.marks, [{ date: '2026-10-16', given: true }]);
 });
+
+test('bestilt-markering for en fredag kan sættes og fjernes', () => {
+  const on = applyRequest(data, { type: 'order', date: '2026-10-16', given: true }, asAnna);
+  assert.deepEqual(on.data.ordered, ['2026-10-16']);
+  assert.match(on.message, /bestilt ✅/);
+  const twice = applyRequest(on.data, { type: 'order', date: '2026-10-16', given: true }, asAnna);
+  assert.deepEqual(twice.data.ordered, ['2026-10-16']);
+  assert.deepEqual(applyRequest(on.data, { type: 'order', date: '2026-10-16', given: false }, asAnna).data.ordered, []);
+  assert.throws(() => applyRequest(data, { type: 'order', date: '2026-10-15', given: true }, asAnna), /ikke en fredag/);
+  assert.throws(() => applyRequest(data, { type: 'order', date: '2026-10-16', given: true }, asStranger), /Kun deltagere/);
+});
+
+test('manuelt tilføjet smør tæller med, når næste smørperson vælges', () => {
+  const added = applyRequest(data, { type: 'butterpast', name: 'anna', date: '2026-10-05' }, asOwner);
+  assert.deepEqual(added.data.butterPast, [{ date: '2026-10-05', name: 'Anna' }]);
+  const withBo = applyRequest(added.data, { type: 'butterpast', name: 'Bo' }, asOwner).data;
+  assert.deepEqual(withBo.butterPast.map((b) => [b.date, b.name]), [['2026-10-05', 'Anna'], ['2026-10-12', 'Bo']]);
+
+  // Anna og Bo har haft smør, så Carl er den eneste der ikke har – og han har ikke morgenmad 16/10 (Anna har).
+  const next = applyRequest(withBo, { type: 'butter', date: '2026-10-16' }, asOwner);
+  assert.deepEqual(next.data.butter, [{ date: '2026-10-16', name: 'Carl' }]);
+
+  assert.throws(() => applyRequest(added.data, { type: 'butterpast', name: 'Anna', date: '2026-10-05' }, asOwner), /allerede/);
+  assert.throws(() => applyRequest(data, { type: 'butterpast', name: 'Ukendt' }, asOwner), /kan ikke finde/);
+  assert.throws(() => applyRequest(data, { type: 'butterpast', name: 'Anna', date: '2026-10-20' }, asOwner), /fremtiden/);
+
+  const removed = applyRequest(added.data, { type: 'unbutterpast', name: 'Anna', date: '2026-10-05' }, asOwner);
+  assert.deepEqual(removed.data.butterPast, []);
+  assert.throws(() => applyRequest(removed.data, { type: 'unbutterpast', name: 'Anna' }, asOwner), /kan ikke finde/);
+});
+
+test('byttelogen kan ryddes uden at ændre rækkefølgen', () => {
+  const swapped = applyRequest(data, { type: 'swap', name: 'Anna', other: 'Bo' }, asOwner).data;
+  const cleared = applyRequest(swapped, { type: 'clearswaps' }, asOwner);
+  assert.deepEqual(cleared.data.swaps, []);
+  assert.deepEqual(cleared.data.participants.map((p) => p.name), swapped.participants.map((p) => p.name));
+  assert.throws(() => applyRequest(cleared.data, { type: 'clearswaps' }, asOwner), /allerede tom/);
+  assert.throws(() => applyRequest(swapped, { type: 'clearswaps' }, asStranger), /Kun deltagere/);
+});

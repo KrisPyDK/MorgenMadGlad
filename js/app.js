@@ -215,7 +215,9 @@ function perform(request) {
   const check = tryRequest(request);
   if (check.error) return Promise.resolve(check.error);
   if (state.mode === 'github') {
-    if (request.type === 'gave') return Promise.resolve('Det virker kun, når listen gemmes i Google Sheet.');
+    if (['gave', 'order', 'butterpast', 'unbutterpast', 'clearswaps'].includes(request.type)) {
+      return Promise.resolve('Det virker kun, når listen gemmes i Google Sheet.');
+    }
     if (request.type === 'mark' && request.given === null) {
       return Promise.resolve('Markeringen kan kun fjernes, når listen gemmes i Google Sheet.');
     }
@@ -363,6 +365,10 @@ function renderNext(entries, next) {
   if (config.orderUrl) $('#order-link').href = config.orderUrl;
   state.deadline = next ? deadlineFor(next.date, config.orderDaysBefore, config.orderHour) : null;
   state.deadlineDate = next ? next.date : null;
+  state.ordered = Boolean(next && state.data.ordered.includes(next.date));
+  const canMark = state.mode === 'sheet' && Boolean(next);
+  $('#order-done').hidden = !canMark || state.ordered;
+  $('#order-pill').hidden = !canMark || !state.ordered;
   tickOrder();
 
   const eyebrow = $('#next-eyebrow');
@@ -419,8 +425,8 @@ function renderNext(entries, next) {
 /** Nedtælling til sidste frist for bestilling. */
 function tickOrder() {
   const timer = $('#order-timer');
-  timer.hidden = !state.deadline;
-  if (!state.deadline) return;
+  timer.hidden = !state.deadline || state.ordered;
+  if (timer.hidden) return;
   const left = state.deadline - Date.now();
   const deadlineDay = formatDate(addDays(state.deadlineDate, -config.orderDaysBefore), { weekday: 'long' });
   const label = `${capitalize(deadlineDay)} kl. ${String(config.orderHour).padStart(2, '0')}`;
@@ -636,6 +642,7 @@ function renderTeam() {
 }
 
 function renderSwaps() {
+  $('#swaps-clear').hidden = state.mode !== 'sheet' || state.data.swaps.length === 0;
   const swaps = [...state.data.swaps].reverse().slice(0, 10);
   const list = $('#swaps');
   if (!swaps.length) {
@@ -678,7 +685,8 @@ function renderButter() {
   const past = [
     ...data.history.filter((entry) => entry.butter).map((entry) => ({ date: entry.date, name: entry.butter })),
     ...[...state.butter.values()].filter((item) => item.date < today && item.name),
-  ].reverse();
+    ...data.butterPast.map((entry) => ({ ...entry, manual: true })),
+  ].sort((a, b) => b.date.localeCompare(a.date));
 
   const tally = new Map();
   for (const entry of past) tally.set(entry.name, (tally.get(entry.name) ?? 0) + 1);
@@ -691,6 +699,19 @@ function renderButter() {
       avatar(item.name),
       h('strong', {}, item.name),
       future ? h('span', { class: 'tag tag--butter' }, relativeDays(item.date)) : null,
+      item.manual
+        ? h(
+            'button',
+            {
+              class: 'member__remove',
+              type: 'button',
+              title: 'Fjern fra listen',
+              'aria-label': `Fjern ${item.name} fra smørlisten`,
+              onclick: async () => report(await perform({ type: 'unbutterpast', name: item.name, date: item.date })),
+            },
+            '×',
+          )
+        : null,
     );
 
   $('#butter-upcoming').replaceChildren(
@@ -707,6 +728,13 @@ function renderButter() {
       .map(([name, count]) => h('span', { class: 'butter-tally__item' }, avatar(name), `${name} × ${count}`)),
   );
   $('#butter-tally').hidden = tally.size === 0;
+
+  const form = $('#butter-add');
+  form.hidden = state.mode !== 'sheet' || data.participants.length === 0;
+  const select = $('#butter-who');
+  const chosen = select.value;
+  select.replaceChildren(...data.participants.map((p) => h('option', { value: p.name }, p.name)));
+  if (data.participants.some((p) => p.name === chosen)) select.value = chosen;
 }
 
 function renderHistory() {
@@ -1256,6 +1284,28 @@ function init() {
       : ['Knapperne åbner et GitHub-issue, som du bare trykker ', h('b', {}, 'Create'), ' på. Robotten opdaterer listen på cirka et minut.']),
   );
 
+  $('#order-done').addEventListener('click', async (event) => {
+    if (!state.deadlineDate) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    burst(rect.left + rect.width / 2, rect.top + rect.height / 2, 18);
+    report(await perform({ type: 'order', date: state.deadlineDate, given: true }));
+  });
+  $('#order-undo').addEventListener('click', async () => {
+    if (state.deadlineDate) report(await perform({ type: 'order', date: state.deadlineDate, given: false }));
+  });
+  $('#butter-add').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const name = $('#butter-who').value;
+    if (name) report(await perform({ type: 'butterpast', name }));
+  });
+  $('#swaps-clear').addEventListener('click', async () => {
+    const confirmed = await confirmDialog({
+      title: 'Ryd byttelogen?',
+      text: ['Alle bytninger fjernes fra loggen. Rækkefølgen på listen ændres ikke.'],
+      ok: 'Ryd',
+    });
+    if (confirmed) report(await perform({ type: 'clearswaps' }));
+  });
   $('#team-edit').addEventListener('click', () => {
     state.editOrder = !state.editOrder;
     renderTeam();

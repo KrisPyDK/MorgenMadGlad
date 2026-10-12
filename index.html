@@ -136,6 +136,11 @@
           <a class="btn btn--order" id="order-link" href="#" target="_blank" rel="noopener">
             <span class="btn--order__icon" aria-hidden="true">🛒</span> Bestil morgenbrød
           </a>
+          <button class="order-done" id="order-done" type="button" hidden>✅ Jeg har bestilt</button>
+          <span class="order-pill" id="order-pill" hidden>
+            ✅ Bestilt
+            <button class="order-pill__undo" id="order-undo" type="button" title="Fjern markering" aria-label="Fjern bestilt-markering">×</button>
+          </span>
           <div class="order-timer" id="order-timer" role="timer" aria-live="off">
             <span class="order-timer__label" id="order-label"></span>
             <span class="order-timer__time" id="order-time"></span>
@@ -192,12 +197,20 @@
           <h3 class="butter__sub">Har haft smør med</h3>
           <ol class="butter__list" id="butter-past"></ol>
           <div class="butter-tally" id="butter-tally" hidden></div>
+          <form class="butter-add" id="butter-add" hidden>
+            <label class="sr-only" for="butter-who">Hvem har haft smør med?</label>
+            <select class="input butter-add__who" id="butter-who"></select>
+            <button class="btn btn--soft" type="submit">+ Har haft smør</button>
+          </form>
         </section>
 
         <section class="card swaps" aria-labelledby="swaps-title">
           <div class="card__head card__head--row">
             <h2 id="swaps-title">Byttelog</h2>
-            <span class="count swaps__badge" aria-hidden="true">⇄</span>
+            <span class="team__tools">
+              <button class="chip-btn" id="swaps-clear" type="button" hidden>Ryd</button>
+              <span class="count swaps__badge" aria-hidden="true">⇄</span>
+            </span>
           </div>
           <ol class="swaps__list" id="swaps"></ol>
         </section>

@@ -1221,3 +1221,51 @@ svg { display: block; }
 .member__move:active:not(:disabled) { scale: .9; }
 .member__move:disabled { opacity: .3; cursor: default; }
 .team__list.is-editing .member { animation: none; }
+
+/* ---------- Bestilt ✅ ---------- */
+
+.order-done {
+  appearance: none;
+  border: 2px solid rgb(143 74 28 / .35);
+  border-radius: 999px;
+  padding: 6px 14px;
+  background: rgb(255 255 255 / .75);
+  color: #5A2F10;
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+  transition: scale .35s var(--spring), rotate .35s var(--spring), background-color .2s;
+}
+.order-done:hover { scale: 1.08; rotate: -2deg; background: #CDEBD3; border-color: var(--pistachio); }
+.order-done:active { scale: .93; }
+.order-done[hidden], .order-pill[hidden] { display: none; }
+.order-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 6px 5px 14px;
+  border-radius: 999px;
+  background: #CDEBD3;
+  border: 2px solid var(--pistachio);
+  color: #1E4D2B;
+  font-weight: 800;
+  animation: butter-pop .7s var(--spring-strong) backwards;
+}
+.order-pill__undo {
+  appearance: none;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  line-height: 1;
+  transition: scale .3s var(--spring), background-color .2s;
+}
+.order-pill__undo:hover { background: rgb(0 0 0 / .12); scale: 1.15; }
+
+.butter-add { display: flex; gap: 8px; margin-top: 14px; }
+.butter-add[hidden] { display: none; }
+.butter-add__who { flex: 1; min-width: 0; border-radius: 999px; appearance: auto; }
+.butter-entry .member__remove { margin-left: auto; }

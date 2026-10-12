@@ -23,6 +23,8 @@
  *                 plads den `date`, så a tog bFrom og b tog aFrom.
  *   marks         Markeringer af om morgenmaden blev givet: [{ date, given: true|false }].
  *                 Når fredagen er overstået, flyttes den til history som { ..., given }.
+ *   ordered       Fredage hvor morgenbrødet er bestilt: ['2026-10-16', ...].
+ *   butterPast    Manuelt tilføjet smør der allerede er taget med: [{ date, name }].
  *   butter        Fredage hvor der skal købes smør: [{ date, name }]. `name`
  *                 vælges når smørret tilføjes (se pickButter). Tidligere
  *                 smør står i history som { ..., butter: navn }.
@@ -129,6 +131,10 @@ function normalizeData(raw, today) {
     cancelled: [...cancelled.values()].sort((a, b) => a.date.localeCompare(b.date)),
     history: Array.isArray(source.history) ? source.history.filter((h) => h && isValidDate(h.date)) : [],
     marks: (Array.isArray(source.marks) ? source.marks : []).filter((m) => m && isFriday(m.date) && typeof m.given === 'boolean'),
+    ordered: [...new Set((Array.isArray(source.ordered) ? source.ordered : []).filter((d) => isFriday(d)))].sort(),
+    butterPast: (Array.isArray(source.butterPast) ? source.butterPast : [])
+      .filter((b) => b && isValidDate(b.date) && typeof b.name === 'string' && b.name)
+      .sort((a, b) => a.date.localeCompare(b.date)),
     swaps: Array.isArray(source.swaps) ? source.swaps.filter((s) => s && isValidDate(s.date) && s.a && s.b) : [],
     butter: (Array.isArray(source.butter) ? source.butter : [])
       .map((b) => (typeof b === 'string' ? { date: b } : { ...b }))
@@ -239,6 +245,7 @@ function settle(data, today) {
     history: history.slice(-MAX_HISTORY),
     butter,
     marks: marks.filter((m) => m.date >= target),
+    ordered: (data.ordered || []).filter((d) => d >= target),
   };
 }
 
@@ -252,6 +259,7 @@ function lastButter(data) {
   };
   for (const entry of data.history) note(entry.butter, entry.date);
   for (const entry of data.butter || []) note(entry.name, entry.date);
+  for (const entry of data.butterPast || []) note(entry.name, entry.date);
   return last;
 }
 
@@ -606,6 +614,58 @@ function applyRequest(data, request, { today, author = '', association = 'NONE',
       };
     }
 
+    case 'order': {
+      if (!trusted && !authorIsParticipant) {
+        throw new RequestError('Kun deltagere på listen eller personer med skriveadgang til repoet kan markere bestillinger.');
+      }
+      const { date } = request;
+      checkFriday(request, today);
+      const others = (data.ordered || []).filter((d) => d !== date);
+      const on = request.given !== false;
+      return {
+        data: { ...data, ordered: on ? [...others, date].sort() : others },
+        message: on ? `🛒 Morgenmaden til ${nice(date)} er bestilt ✅` : `Bestillingen til ${nice(date)} er fjernet.`,
+      };
+    }
+
+    case 'butterpast':
+    case 'unbutterpast': {
+      if (!trusted && !authorIsParticipant) {
+        throw new RequestError('Kun deltagere på listen eller personer med skriveadgang til repoet kan rette smørlisten.');
+      }
+      const past = data.butterPast || [];
+      const date = request.date || today;
+      if (date > today) throw new RequestError('Datoen ligger i fremtiden. Brug "Smør"-knappen på en fredag i stedet.');
+
+      if (request.type === 'butterpast') {
+        const person = data.participants.find((p) => request.name && sameName(p.name, request.name));
+        if (!person) throw new RequestError(`Jeg kan ikke finde **${request.name || '(intet navn)'}** på listen.`);
+        if (past.some((b) => b.name === person.name && b.date === date)) {
+          throw new RequestError(`**${person.name}** står allerede som havde smør med ${nice(date)}.`);
+        }
+        return {
+          data: { ...data, butterPast: [...past, { date, name: person.name }].sort((a, b) => a.date.localeCompare(b.date)) },
+          message: `🧈 **${person.name}** står nu som havde smør med ${nice(date)}.`,
+        };
+      }
+
+      const match = past.filter((b) => request.name && sameName(b.name, request.name) && (!request.date || b.date === request.date));
+      if (!match.length) throw new RequestError('Jeg kan ikke finde det smør på listen.');
+      const gone = match[match.length - 1];
+      return {
+        data: { ...data, butterPast: past.filter((b) => b !== gone) },
+        message: `Smørret ${nice(gone.date)} (${gone.name}) er fjernet fra listen. 🧈`,
+      };
+    }
+
+    case 'clearswaps': {
+      if (!trusted && !authorIsParticipant) {
+        throw new RequestError('Kun deltagere på listen eller personer med skriveadgang til repoet kan rydde byttelogen.');
+      }
+      if (!(data.swaps || []).length) throw new RequestError('Byttelogen er allerede tom.');
+      return { data: { ...data, swaps: [] }, message: 'Byttelogen er ryddet. 🧹' };
+    }
+
     case 'butter':
     case 'unbutter': {
       const { date } = request;
@@ -655,7 +715,7 @@ function applyRequest(data, request, { today, author = '', association = 'NONE',
  *
  * Gemmer listen i et Google Sheet, så ingen behøver login.
  * Siden henter listen med GET og sender ændringer med POST:
- *   { action: 'join' | 'leave' | 'cancel' | 'reopen' | 'swap' | 'butter' | 'unbutter' | 'mark' | 'gave', name?, other?, date?, reason?, given? }
+ *   { action: 'join' | 'leave' | 'cancel' | 'reopen' | 'swap' | 'butter' | 'unbutter' | 'mark' | 'gave' | 'order' | 'butterpast' | 'unbutterpast' | 'clearswaps', name?, other?, date?, reason?, given? }
  *
  * Arkene oprettes automatisk:
  *   Data – listen som JSON i celle A1 (selve "databasen")
@@ -669,7 +729,7 @@ const SPREADSHEET_ID = '1NivBtDLpzeWHS6q6aGp6IQ8Gg42iskbLPOjtTi2L1Bw';
 const DATA_SHEET = 'Data';
 const PLAN_SHEET = 'Plan';
 const LOG_SHEET = 'Log';
-const ACTIONS = ['join', 'leave', 'cancel', 'reopen', 'swap', 'butter', 'unbutter', 'mark', 'gave'];
+const ACTIONS = ['join', 'leave', 'cancel', 'reopen', 'swap', 'butter', 'unbutter', 'mark', 'gave', 'order', 'butterpast', 'unbutterpast', 'clearswaps'];
 const MAX_PARTICIPANTS = 60;
 
 function doGet() {
@@ -770,7 +830,7 @@ function writeData_(data, today) {
 
 function log_(request, message) {
   const what =
-    ['cancel', 'reopen', 'butter', 'unbutter', 'mark'].includes(request.type)
+    ['cancel', 'reopen', 'butter', 'unbutter', 'mark', 'order'].includes(request.type)
       ? request.date
       : request.type === 'swap'
         ? `${request.name} ⇄ ${request.other}`
