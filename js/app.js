@@ -9,6 +9,7 @@ import {
   isFriday,
   isoWeek,
   nextDates,
+  resetSwaps,
   normalizeData,
   settle,
   todayIn,
@@ -582,6 +583,7 @@ function renderTeam() {
   editButton.setAttribute('aria-pressed', String(Boolean(state.editOrder)));
   editButton.textContent = state.editOrder ? 'Færdig' : 'Ret rækkefølge';
   const editing = state.editOrder;
+  $('#team-reset').hidden = !editing || !(config.defaultOrder || []).length;
 
   const list = $('#team');
   list.classList.toggle('is-editing', Boolean(editing));
@@ -639,6 +641,31 @@ function renderTeam() {
       ),
     ),
   );
+}
+
+/** Nulstiller rækkefølgen til config.defaultOrder med de byt der skal til. */
+async function resetOrder() {
+  const settled = settle(state.data, state.today);
+  const queue = settled.participants.map((p) => p.name);
+  const last = settled.history.length ? settled.history[settled.history.length - 1].name : null;
+  const swaps = resetSwaps(queue, config.defaultOrder || [], last);
+  if (!swaps.length) {
+    toast('Rækkefølgen er allerede standard 👍');
+    return;
+  }
+  const confirmed = await confirmDialog({
+    title: 'Nulstil rækkefølgen?',
+    text: [`Holdet sættes tilbage til standardrækkefølgen (${swaps.length} byt, som står i byttelogen). Standarden fortsætter efter den der sidst gav.`],
+    ok: 'Nulstil',
+  });
+  if (!confirmed) return;
+  for (const [name, other] of swaps) {
+    const error = await perform({ type: 'swap', name, other });
+    if (error) {
+      report(error);
+      return;
+    }
+  }
 }
 
 function renderSwaps() {
@@ -1325,6 +1352,7 @@ function init() {
     });
     if (confirmed) report(await perform({ type: 'clearswaps' }));
   });
+  $('#team-reset').addEventListener('click', resetOrder);
   $('#team-edit').addEventListener('click', () => {
     state.editOrder = !state.editOrder;
     renderTeam();

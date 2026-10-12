@@ -15,6 +15,8 @@ export const config = {
   // Pinkode der kræves for at rydde byttelogen. Tom = ingen kode. OBS: koden står i det offentlige repo,
   // så den er en blød lås mod fejltryk – ikke sikkerhed.
   clearPin: '1234',
+  // Standardrækkefølgen på Bagerholdet. "Nulstil" under "Ret rækkefølge" gendanner den.
+  defaultOrder: ['AHG', 'Jesper', 'ATMP', 'KMRT', 'MOPT', 'CLHE', 'KBMI'],
   orderDaysBefore: 1,
   orderHour: 12,
   orderUrl: 'https://shop.foodandco.dk/terma-lystrup/varesortiment',

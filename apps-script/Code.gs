@@ -249,6 +249,40 @@ function settle(data, today) {
   };
 }
 
+/**
+ * De byt (par af navne) der skal til for at få køen til at følge standardrækkefølgen.
+ * Standarden er cyklisk: køen starter med den næste i standarden efter den der sidst gav
+ * (`lastGiver`), eller med den første i standarden hvis ingen har givet endnu.
+ * Personer der ikke står i standarden, kommer bagerst i den rækkefølge de står nu.
+ */
+function resetSwaps(queue, defaults, lastGiver) {
+  const key = (name) => name.toLowerCase();
+  const present = new Map(queue.map((name) => [key(name), name]));
+  const seen = new Set();
+  let target = [];
+  for (const name of defaults) {
+    if (present.has(key(name)) && !seen.has(key(name))) {
+      target.push(present.get(key(name)));
+      seen.add(key(name));
+    }
+  }
+  const extras = queue.filter((name) => !seen.has(key(name)));
+  const given = lastGiver ? target.findIndex((name) => key(name) === key(lastGiver)) : -1;
+  const start = given >= 0 ? (given + 1) % target.length : 0;
+  if (start > 0) target = target.slice(start).concat(target.slice(0, start));
+  target = target.concat(extras);
+
+  const work = [...queue];
+  const swaps = [];
+  for (let i = 0; i < target.length; i++) {
+    if (work[i] === target[i]) continue;
+    const j = work.indexOf(target[i]);
+    swaps.push([work[i], work[j]]);
+    [work[i], work[j]] = [work[j], work[i]];
+  }
+  return swaps;
+}
+
 /* ---------- Smør ---------- */
 
 /** Hvornår har hver person sidst haft (eller skal have) smør med? Map(navn -> dato). */

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
+  resetSwaps,
   butterPlan,
   deadlineFor,
   fridayOnOrAfter,
@@ -183,4 +184,42 @@ test('bestilt og manuelt smør normaliseres, og gammel bestilling ryddes når fr
   assert.deepEqual(data.butterPast.map((b) => b.name), ['Anna', 'Bo']);
   assert.deepEqual(settle(data, '2026-10-20').ordered, ['2026-10-23']);
   assert.deepEqual(settle(data, '2026-10-20').butterPast, data.butterPast);
+});
+
+const applySwaps = (queue, swaps) => {
+  const work = [...queue];
+  for (const [a, b] of swaps) {
+    const i = work.indexOf(a);
+    const j = work.indexOf(b);
+    [work[i], work[j]] = [work[j], work[i]];
+  }
+  return work;
+};
+
+test('resetSwaps gendanner standardrækkefølgen og fortsætter efter den der sidst gav', () => {
+  const defaults = ['A', 'B', 'C', 'D', 'E'];
+  assert.deepEqual(resetSwaps(['A', 'B', 'C', 'D', 'E'], defaults), []);
+  // E gav sidst → A er næste: køen er allerede standarden
+  assert.deepEqual(resetSwaps(['A', 'B', 'C', 'D', 'E'], defaults, 'E'), []);
+  // B gav sidst → C er næste: allerede en rotation af standarden
+  assert.deepEqual(resetSwaps(['C', 'D', 'E', 'A', 'B'], defaults, 'B'), []);
+  // rodet: efter E skal A være næste, så ALLE følger standarden fra A
+  const messy = ['C', 'A', 'E', 'B', 'D'];
+  assert.deepEqual(applySwaps(messy, resetSwaps(messy, defaults, 'E')), ['A', 'B', 'C', 'D', 'E']);
+  assert.ok(resetSwaps(messy, defaults, 'E').length <= messy.length - 1);
+  // ingen har givet endnu: standarden starter forfra
+  assert.deepEqual(applySwaps(messy, resetSwaps(messy, defaults)), ['A', 'B', 'C', 'D', 'E']);
+});
+
+test('resetSwaps håndterer nye og afmeldte personer og store/små bogstaver', () => {
+  const defaults = ['A', 'B', 'C', 'D'];
+  // B er afmeldt, X og Y er nye (ikke i standarden) og kommer bagerst i deres nuværende rækkefølge
+  const queue = ['D', 'X', 'A', 'Y', 'C'];
+  assert.deepEqual(applySwaps(queue, resetSwaps(queue, defaults)), ['A', 'C', 'D', 'X', 'Y']);
+  // giveren er ikke på listen mere → starter forfra
+  assert.deepEqual(applySwaps(queue, resetSwaps(queue, defaults, 'Z')), ['A', 'C', 'D', 'X', 'Y']);
+  // D gav sidst → A er næste
+  assert.deepEqual(applySwaps(['b', 'A'], resetSwaps(['b', 'A'], ['A', 'B'], 'B')), ['A', 'b']);
+  assert.deepEqual(resetSwaps([], defaults), []);
+  assert.deepEqual(resetSwaps(['Z'], []), []);
 });

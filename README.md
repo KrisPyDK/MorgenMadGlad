@@ -16,6 +16,7 @@ En lille, bouncy hjemmeside til GitHub Pages, der holder styr på fredagsmorgenm
 - **Nedtælling til bestilling** – ved siden af knappen tæller en timer ned til sidste frist: torsdag kl. 12 (dansk tid) dagen før fredagen. Den bliver rød den sidste time. Ret `orderDaysBefore`/`orderHour` i `js/config.js` hvis fristen ændrer sig.
 - **✅ Bestilt** – tryk "Jeg har bestilt" ved bestil-knappen, når maden er bestilt, så andre kan se det, og tælleren skjules. Tryk × for at fortryde.
 - **Smørlisten kan rettes i hånden** – under "Har haft smør med" kan man tilføje en person, der allerede har haft smør med (og fjerne med ×). De tæller med, når næste smørperson vælges.
+- **Standardrækkefølge** – under "Ret rækkefølge" gendanner **↺ Nulstil** standarden fra `defaultOrder` i `js/config.js` (nu: AHG, Jesper, ATMP, KMRT, MOPT, CLHE, KBMI). Standarden fortsætter efter den der sidst gav, så næste fredag passer. Nye personer, der ikke står i standarden, kommer bagerst. Nulstillingen laver et par byt, som står i byttelogen.
 - **Ryd byttelog** – knappen "Ryd" i Byttelog tømmer loggen (rækkefølgen ændres ikke). Den kræver en pinkode, som står i `clearPin` i `js/config.js` (standard `1234` – ret den). Koden tjekkes på siden og står i det offentlige repo, så den er en lås mod fejltryk, ikke sikkerhed.
 - **Bestil morgenbrød** – knappen i "Næste fredag" fører til [Food & Co Terma Lystrup](https://shop.foodandco.dk/terma-lystrup/varesortiment) (ret `orderUrl` i `js/config.js`).
 - Bagerholdet, ugenumre, historik og en masse hoppende wienerbrød. 🥨
