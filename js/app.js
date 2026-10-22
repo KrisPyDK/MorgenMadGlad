@@ -146,11 +146,11 @@ async function fetchData() {
     const response = await fetch(url);
     const body = await response.json();
     if (!body.ok) throw new Error(body.error);
-    return body.data;
+    return { data: body.data, rev: body.rev };
   }
   const response = await fetch(`data.json?t=${Date.now()}`, { cache: 'no-store' });
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  return response.json();
+  return { data: await response.json() };
 }
 
 /** Viser nye data – men kun hvis noget faktisk har ændret sig. */
@@ -179,9 +179,12 @@ function loadCached() {
 
 async function load() {
   const changes = state.changes;
-  const raw = await fetchData();
+  const { data: raw, rev } = await fetchData();
+  state.fetched = true;
   // Er der gemt noget imens, er svaret forældet.
   if (changes !== state.changes || state.saving) return false;
+  // Et versionsnummer betyder at Google-scriptet er det nye "lager"; uden er det den ældre version.
+  state.rev = typeof rev === 'number' ? rev : undefined;
   state.today = todayIn();
   return setData(normalizeData(raw, state.today));
 }
@@ -230,7 +233,62 @@ function perform(request) {
   return run;
 }
 
+function logEntry(request, message) {
+  const day = ['cancel', 'reopen', 'butter', 'unbutter', 'mark', 'order'].includes(request.type);
+  const what = day ? request.date : request.type === 'swap' ? `${request.name} ⇄ ${request.other}` : request.name;
+  return { type: request.type, what: what || '', message: plain(message) };
+}
+
+/** Gemmer med det nye Google-lager: reglerne køres her, scriptet gemmer bare (og opdager samtidige ændringer). */
+async function saveStore(request) {
+  let base = state.data;
+  state.changes++;
+  setSaving(1);
+  try {
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const local = tryRequest(request);
+      if (local.error) return local.error;
+      setData(local.data);
+
+      const response = await fetch(config.apiUrl, {
+        method: 'POST',
+        body: JSON.stringify({ action: 'save', rev: state.rev, data: local.data, log: logEntry(request, local.message) }),
+      });
+      const body = await response.json();
+      if (body.ok) {
+        state.rev = body.rev;
+        const [title, ...rest] = plain(local.message).split('\n\n');
+        toast(title, rest.join(' '));
+        return null;
+      }
+      if (body.conflict) {
+        // En anden har gemt imens: hent den nyeste liste og udfør handlingen igen på den.
+        state.rev = body.rev;
+        base = normalizeData(body.data, state.today);
+        setData(base);
+        continue;
+      }
+      setData(base);
+      return plain(body.error);
+    }
+    setData(base);
+    return 'Der var mange ændringer på samme tid – prøv igen.';
+  } catch {
+    setData(base);
+    return 'Kunne ikke gemme – tjek forbindelsen og prøv igen.';
+  } finally {
+    state.changes++;
+    setSaving(-1);
+  }
+}
+
 async function save(request) {
+  if (!state.fetched) return 'Listen hentes stadig fra Google – prøv igen om et øjeblik.';
+  return state.rev === undefined ? saveLegacy(request) : saveStore(request);
+}
+
+/** Den ældre måde (Google-scriptet kender selv reglerne). Bruges kun indtil scriptet er opdateret. */
+async function saveLegacy(request) {
   const before = state.data;
   const local = tryRequest(request);
   if (local.error) return local.error;

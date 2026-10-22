@@ -52,8 +52,17 @@ function googleSandbox({ today = '2026-10-12', lockFree = true } = {}) {
     opened,
     get: () => call('doGet'),
     post: (body) => call('doPost', { postData: { contents: typeof body === 'string' ? body : JSON.stringify(body) } }),
+    save: (data, rev, log) => call('doPost', { postData: { contents: JSON.stringify({ action: 'save', rev, data, log }) } }),
   };
 }
+
+const list = (extra = {}) => ({
+  anchor: '2026-10-16',
+  participants: [{ name: 'Mette' }, { name: 'Bo' }, { name: 'Carl' }],
+  cancelled: [],
+  history: [],
+  ...extra,
+});
 
 test('Code.gs er bygget ud fra den nyeste kode (kør "npm run build")', () => {
   assert.equal(code, buildAppsScript());
@@ -68,134 +77,87 @@ test('Code.gs bruger kun syntaks som Googles editor accepterer', () => {
   assert.doesNotMatch(code, /\\p\{/, 'brug ikke unicode-egenskaber i regex');
 });
 
-test('tom liste starter næste fredag', () => {
-  const google = googleSandbox();
-  assert.deepEqual(google.get(), { ok: true, data: { anchor: '2026-10-16', participants: [], cancelled: [], history: [] } });
+test('scriptet indeholder ingen regler – kun lager', () => {
+  assert.doesNotMatch(code, /applyRequest|RequestError/);
 });
 
-test('tilmeld, aflys og afmeld gemmes i arket uden login', () => {
+test('tom liste: starter med dagens fredag og versionsnummer 0', () => {
+  const google = googleSandbox({ today: '2026-10-09' });
+  assert.deepEqual(google.get(), {
+    ok: true,
+    data: { anchor: '2026-10-09', participants: [], cancelled: [], history: [] },
+    rev: 0,
+  });
+});
+
+test('gem: listen, versionsnummer, plan og log skrives i arket', () => {
   const google = googleSandbox();
-  assert.equal(google.post({ action: 'join', name: 'Mette' }).ok, true);
-  const bo = google.post({ action: 'join', name: '  Bo  ' });
-  assert.equal(bo.ok, true);
-  assert.match(bo.message, /Bo\*\* er skrevet på listen/);
-  assert.deepEqual(bo.data.participants, [
-    { name: 'Mette', joined: '2026-10-12' },
-    { name: 'Bo', joined: '2026-10-12' },
-  ]);
+  const data = list({ butter: [{ date: '2026-10-23', name: 'Carl' }], ordered: ['2026-10-16'] });
+  const saved = google.save(data, 0, { type: 'join', what: 'Carl', message: 'Carl er skrevet på listen' });
+  assert.deepEqual(saved, { ok: true, rev: 1 });
 
-  const cancel = google.post({ action: 'cancel', date: '2026-10-16', reason: 'Fælles møde' });
-  assert.equal(cancel.ok, true);
-  assert.deepEqual(cancel.data.cancelled, [{ date: '2026-10-16', reason: 'Fælles møde' }]);
-
-  assert.equal(google.post({ action: 'leave', name: 'mette' }).ok, true);
-
-  const saved = google.get().data;
-  assert.deepEqual(saved.participants.map((p) => p.name), ['Bo']);
+  assert.deepEqual(plain(google.get()), { ok: true, data: plain(data), rev: 1 });
   assert.deepEqual(plain(google.sheets.get('Plan').values.slice(0, 3)), [
-    ['Fredag', 'Morgenmad', 'Smør', 'Givet?'],
-    ['2026-10-16', 'Aflyst – Fælles møde', '', ''],
-    ['2026-10-23', 'Bo', '', ''],
+    ['Fredag', 'Morgenmad', 'Smør', 'Givet?', 'Bestilt?'],
+    ['2026-10-16', 'Mette', '', '', '🛒 Bestilt'],
+    ['2026-10-23', 'Bo', 'Carl', '', ''],
   ]);
-  assert.deepEqual(plain(google.sheets.get('Log').rows.map((row) => row.slice(1, 3))), [
-    ['join', 'Mette'],
-    ['join', 'Bo'],
-    ['cancel', '2026-10-16'],
-    ['leave', 'mette'],
-  ]);
+  const log = plain(google.sheets.get('Log').rows);
+  assert.deepEqual(log.map((row) => row.slice(1)), [['join', 'Carl', 'Carl er skrevet på listen']]);
 });
 
-test('ugyldige anmodninger afvises med dansk besked og den aktuelle liste', () => {
+test('samtidige ændringer: forældet versionsnummer afvises, og den nyeste liste returneres', () => {
   const google = googleSandbox();
-  google.post({ action: 'join', name: 'Mette' });
-  const duplicate = google.post({ action: 'join', name: 'METTE' });
-  assert.equal(duplicate.ok, false);
-  assert.match(duplicate.error, /Mette\*\* står allerede på listen/);
-  assert.equal(duplicate.data.participants.length, 1);
+  const mine = list();
+  const theirs = list({ participants: [{ name: 'Mette' }, { name: 'Bo' }, { name: 'Dorte' }] });
+  assert.equal(google.save(theirs, 0).ok, true); // en anden gemmer først (rev 0 → 1)
 
-  assert.equal(google.post({ action: 'cancel', date: '2026-10-15' }).ok, false);
-  assert.equal(google.post({ action: 'slet-alt' }).error, 'Ukendt handling.');
+  const conflict = google.save(mine, 0); // min kopi er stadig rev 0
+  assert.equal(conflict.ok, false);
+  assert.equal(conflict.conflict, true);
+  assert.equal(conflict.rev, 1);
+  assert.deepEqual(plain(conflict.data), plain(theirs));
+
+  assert.deepEqual(plain(google.get().data), plain(theirs)); // intet blev overskrevet
+  assert.deepEqual(google.save(mine, 1), { ok: true, rev: 2 }); // prøver igen på nyeste version
+});
+
+test('ugyldige kald ødelægger ikke listen', () => {
+  const google = googleSandbox();
+  google.save(list(), 0);
+  const stored = plain(google.get().data);
+
+  const bad = [
+    [null, 'Ugyldig liste.'],
+    [[], 'Ugyldig liste.'],
+    [{ anchor: '2026-10-16' }, 'Ugyldig eller for stor liste.'],
+    [{ anchor: '2026-10-16', participants: [{ name: '' }] }, 'Ugyldig deltager.'],
+    [{ anchor: '2026-10-16', participants: [{ name: 'A' }].concat(new Array(60).fill({ name: 'B' })) }, 'Ugyldig eller for stor liste.'],
+    [{ participants: [{ name: 'A' }] }, 'Ugyldig startdato.'],
+    [{ anchor: '2026-10-16', participants: [{ name: 'A' }], history: ['x'.repeat(250000)] }, 'Listen er for stor.'],
+  ];
+  for (const [data, error] of bad) {
+    const result = google.save(data, 1);
+    assert.deepEqual([result.ok, result.error], [false, error]);
+  }
+  assert.deepEqual(plain(google.get()), { ok: true, data: stored, rev: 1 });
+
+  assert.equal(google.post({ action: 'join', name: 'Mette' }).error, 'Ukendt handling.');
   assert.equal(google.post('ikke json').error, 'Ukendt handling.');
 });
 
-test('bytning gemmes og står i loggen', () => {
+test('en fejl i plan-visningen forhindrer ikke at listen gemmes', () => {
   const google = googleSandbox();
-  for (const name of ['Mette', 'Bo', 'Carl']) google.post({ action: 'join', name });
-  const swap = google.post({ action: 'swap', name: 'Mette', other: 'Carl' });
-  assert.equal(swap.ok, true);
-  assert.deepEqual(plain(swap.data.swaps), [
-    { date: '2026-10-12', a: 'Mette', b: 'Carl', aFrom: '2026-10-16', bFrom: '2026-10-30' },
-  ]);
-  assert.deepEqual(plain(google.sheets.get('Plan').values.slice(1, 4)), [
-    ['2026-10-16', 'Carl', '', ''],
-    ['2026-10-23', 'Bo', '', ''],
-    ['2026-10-30', 'Mette', '', ''],
-  ]);
-  assert.deepEqual(plain(google.sheets.get('Log').rows.at(-1).slice(1, 3)), ['swap', 'Mette ⇄ Carl']);
-  assert.equal(google.post({ action: 'swap', name: 'Mette', other: 'Ukendt' }).ok, false);
+  // plan-fanen kan ikke skrives, men listen skal alligevel gemmes
+  google.get();
+  google.sheets.set('Plan', { getRange: () => { throw new Error('boom'); }, clearContents() { throw new Error('boom'); } });
+  assert.deepEqual(google.save(list(), 0), { ok: true, rev: 1 });
+  assert.equal(google.get().data.participants.length, 3);
 });
 
-test('smør tilføjes, vises i planen og logges', () => {
-  const google = googleSandbox();
-  for (const name of ['Mette', 'Bo', 'Carl']) google.post({ action: 'join', name });
-  const added = google.post({ action: 'butter', date: '2026-10-16' });
-  assert.equal(added.ok, true);
-  assert.deepEqual(plain(added.data.butter), [{ date: '2026-10-16', name: 'Bo' }]);
-  assert.deepEqual(plain(google.sheets.get('Plan').values[1]), ['2026-10-16', 'Mette', 'Bo', '']);
-  assert.deepEqual(plain(google.sheets.get('Log').rows.at(-1).slice(1, 3)), ['butter', '2026-10-16']);
-
-  assert.equal(google.post({ action: 'butter', date: '2026-10-16' }).ok, false);
-  assert.equal(google.post({ action: 'unbutter', date: '2026-10-16' }).ok, true);
-  assert.deepEqual(plain(google.get().data.butter), []);
-});
-
-test('markering af givet morgenmad gemmes, vises i planen og flyttes til historikken', () => {
-  const google = googleSandbox({ today: '2026-10-16' });
-  assert.equal(google.get().data.anchor, '2026-10-16'); // tom liste starter med dagens fredag
-  for (const name of ['Mette', 'Bo']) google.post({ action: 'join', name });
-  assert.equal(google.post({ action: 'mark', date: '2026-10-23', given: true }).ok, false); // fremtiden
-  assert.equal(google.post({ action: 'mark', date: '2026-10-16', given: true }).ok, true);
-  assert.deepEqual(plain(google.sheets.get('Plan').values[1]), ['2026-10-16', 'Mette', '', '✅ Givet']);
-
-  const later = googleSandbox({ today: '2026-10-23' });
-  later.sheets.set('Data', google.sheets.get('Data'));
-  const data = later.post({ action: 'mark', date: '2026-10-23', given: false }).data;
-  assert.deepEqual(plain(data.history), [{ date: '2026-10-16', name: 'Mette', given: true }]);
-  assert.deepEqual(plain(data.marks), [{ date: '2026-10-23', given: false }]);
-});
-
-test('jeg gav i dag: kun dig på listen, og listen starter først næste fredag', () => {
-  const google = googleSandbox({ today: '2026-10-09' });
-  google.get(); // opretter Data-arket
-  google.sheets.get('Data').cells.set(
-    'A1',
-    JSON.stringify({ anchor: '2026-10-16', participants: [{ name: 'KBMI' }], cancelled: [], history: [], swaps: [], butter: [] }),
-  );
-  const gave = google.post({ action: 'gave', name: 'KBMI', date: '2026-10-09' });
-  assert.equal(gave.ok, true);
-  assert.deepEqual(plain(gave.data.history), [{ date: '2026-10-09', name: 'KBMI', given: true }]);
-
-  const joined = google.post({ action: 'join', name: 'Mette' });
-  assert.deepEqual(plain(joined.data.participants.map((p) => p.name)), ['Mette', 'KBMI']);
-  assert.deepEqual(plain(google.sheets.get('Plan').values.slice(1, 3).map((row) => row[1])), ['Mette', 'KBMI']);
-});
-
-test('bestilt-markering, manuelt smør og ryd byttelog gemmes i arket', () => {
-  const google = googleSandbox({ today: '2026-10-12' });
-  for (const name of ['Mette', 'Bo', 'Carl']) google.post({ action: 'join', name });
-
-  assert.deepEqual(plain(google.post({ action: 'order', date: '2026-10-16', given: true }).data.ordered), ['2026-10-16']);
-  assert.deepEqual(plain(google.post({ action: 'order', date: '2026-10-16', given: false }).data.ordered), []);
-
-  const past = google.post({ action: 'butterpast', name: 'Mette', date: '2026-10-05' });
-  assert.deepEqual(plain(past.data.butterPast), [{ date: '2026-10-05', name: 'Mette' }]);
-  assert.equal(google.post({ action: 'unbutterpast', name: 'Mette', date: '2026-10-05' }).ok, true);
-
-  google.post({ action: 'swap', name: 'Mette', other: 'Bo' });
-  const cleared = google.post({ action: 'clearswaps' });
-  assert.deepEqual(plain(cleared.data.swaps), []);
-  assert.deepEqual(plain(cleared.data.participants.map((p) => p.name)), ['Bo', 'Mette', 'Carl']);
-  assert.deepEqual(plain(google.sheets.get('Log').rows.map((row) => row[1]).slice(-2)), ['swap', 'clearswaps']);
+test('travlt bageri: låsen er optaget', () => {
+  const google = googleSandbox({ lockFree: false });
+  assert.match(google.save(list(), 0).error, /travlt/);
 });
 
 test('scriptet bruger dit Google Sheet', () => {
@@ -204,24 +166,23 @@ test('scriptet bruger dit Google Sheet', () => {
   assert.deepEqual([...google.opened], ['1NivBtDLpzeWHS6q6aGp6IQ8Gg42iskbLPOjtTi2L1Bw']);
 });
 
-test('travlt bageri: låsen er optaget', () => {
-  const google = googleSandbox({ lockFree: false });
-  assert.match(google.post({ action: 'join', name: 'Mette' }).error, /travlt/);
-});
-
-test('gemte fredage låses fast når tiden går', () => {
-  const google = googleSandbox({ today: '2026-10-12' });
-  google.post({ action: 'join', name: 'Mette' });
-  google.post({ action: 'join', name: 'Bo' });
-  const data = JSON.parse(google.sheets.get('Data').cells.get('A1'));
-
-  const later = googleSandbox({ today: '2026-10-27' });
-  later.sheets.set('Data', google.sheets.get('Data'));
-  const result = later.post({ action: 'join', name: 'Carl' });
-  assert.equal(data.anchor, '2026-10-16');
-  assert.equal(result.data.anchor, '2026-10-30');
-  assert.deepEqual(result.data.history, [
-    { date: '2026-10-16', name: 'Mette' },
-    { date: '2026-10-23', name: 'Bo' },
-  ]);
+test('eksisterende data virker uændret med det nye lager (ingen migrering)', () => {
+  const google = googleSandbox();
+  const existing = {
+    anchor: '2026-10-23',
+    participants: [{ name: 'Jesper', joined: '2026-10-12' }, { name: 'ATMP', joined: '2026-10-09' }],
+    cancelled: [{ date: '2026-12-25', reason: 'Helligdag' }],
+    history: [{ date: '2026-10-16', name: 'AHG', butter: 'Jesper', given: true }],
+    swaps: [],
+    butter: [{ date: '2026-10-23', name: 'ATMP' }],
+    marks: [],
+    ordered: ['2026-10-23'],
+    butterPast: [{ date: '2026-10-12', name: 'CLHE' }],
+  };
+  google.get(); // opretter Data-arket uden versionsnummer (som i dit ark nu)
+  google.sheets.get('Data').cells.set('A1', JSON.stringify(existing));
+  const read = google.get();
+  assert.deepEqual([read.ok, read.rev], [true, 0]);
+  assert.deepEqual(plain(read.data), existing);
+  assert.equal(google.save(existing, 0).ok, true);
 });

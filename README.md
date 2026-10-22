@@ -82,19 +82,14 @@ Færdig! Nu gemmes alt med det samme. I arket kan du følge med:
 - **Log** – hvem der tilmeldte, afmeldte, aflyste, genåbnede, byttede og tilføjede smør hvad og hvornår.
 - **Data** – selve listen (JSON i celle A1).
 
-### Opdatering af scriptet
+### Scriptet er bare et lager – du skal sjældent opdatere det
 
-Når `apps-script/Code.gs` ændres (f.eks. da smør kom til), skal Google have den nye version:
+Google-scriptet indeholder ingen regler. Det kan kun hente og gemme listen (og skrive Plan- og Log-fanerne). Al logik (tilmeld, byt, smør, bestilt osv.) ligger på siden. Nye funktioner kræver derfor **ikke** en ny `Code.gs`: de er med, så snart siden er udgivet.
 
-1. Åbn scriptet (*Udvidelser → Apps Script* i arket), slet alt i `Code.gs` og indsæt den nye kode fra GitHub. Gem.
-2. Vælg *Implementer → Administrer implementeringer → ✏️ (rediger) → Version: **Ny version** → Implementer*.
-
-URL'en forbliver den samme, så siden skal ikke ændres. Glemmer du trin 2, siger siden "Google-scriptet er en ældre version", når man bruger en ny funktion.
-
-### Fejlfinding
-
-- **"Listen kunne ikke hentes":** Tjek at *Hvem har adgang* er sat til **Alle**, og at URL'en ender på `/exec` (ikke `/dev`).
-- **Ændringer kommer ikke med:** Husk at lave en *ny version* af implementeringen efter du har ændret koden.
+- Er to ved at gemme samtidig, får listen et versionsnummer (i `Data!C1`). Den, der kommer sidst, henter den nyeste liste og udfører sin handling igen, så ingen mister deres ændring.
+- Har du et ældre script, uden versionsnummer, virker siden som før, men nye funktioner siger "Google-scriptet er en ældre version". Indsæt så den nuværende `Code.gs` én gang, og vælg *Implementer → Administrer implementeringer → ✏️ → Version: **Ny version** → Implementer*. URL'en forbliver den samme.
+- Plan-fanen i arket er kun en visning. Går den i stykker, bliver listen stadig gemt.
+- Der er en fane **Backup …** med en kopi af listen fra før skiftet. Den bruges ikke og kan slettes.
 
 ## GitHub-issues (uden Google)
 
@@ -144,9 +139,9 @@ npm run build   # genererer apps-script/Code.gs efter ændringer i js/ eller app
 | ---------------------------------- | -------------------------------------------------------- |
 | `index.html`, `css/`, `js/app.js`  | Selve siden og animationerne                             |
 | `js/schedule.js`                   | Rotationslogikken og smørplanen                          |
-| `js/requests.js`                   | Tilmeld/afmeld/aflys/genåbn/byt/smør – deles af siden og serverne |
+| `js/requests.js`                   | Alle handlinger (tilmeld, byt, smør osv.) – kører på siden |
 | `js/config.js`                     | Google-URL, bestil-link, repo-navn og antal uger         |
-| `apps-script/server.js`            | Google Apps Script-serveren                              |
+| `apps-script/server.js`            | Google Apps Script-lageret (hent/gem med versionsnummer)  |
 | `apps-script/Code.gs`              | Genereret fil til at kopiere ind i Google                |
 | `apps-script/appsscript.json`      | Manifest (tidszone, rettigheder, webapp-indstillinger)   |
 | `scripts/`                         | GitHub-robotten og build-scriptet                        |

@@ -8,7 +8,8 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const root = new URL('../', import.meta.url);
-const SOURCES = ['js/schedule.js', 'js/requests.js', 'apps-script/server.js'];
+// Kun planlægningen (til Plan-fanen) – reglerne ligger på siden, så scriptet sjældent skal opdateres.
+const SOURCES = ['js/schedule.js', 'apps-script/server.js'];
 export const OUTPUT = 'apps-script/Code.gs';
 
 const HEADER = `/**

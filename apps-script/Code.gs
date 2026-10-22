@@ -335,447 +335,24 @@ function butterPlan(data) {
   return plan;
 }
 
-// ===== js/requests.js =====
-
-/**
- * Fortolker og udfører anmodninger (tilmeld, afmeld, aflys, genåbn).
- * Ren logik uden netværk, som deles af siden, GitHub-robotten og Google-scriptet.
- */
-
-class RequestError extends Error {}
-
-const TYPES = {
-  tilmeld: 'join',
-  afmeld: 'leave',
-  aflys: 'cancel',
-  genåbn: 'reopen',
-  genaabn: 'reopen',
-  byt: 'swap',
-  smør: 'butter',
-  smoer: 'butter',
-  'fjern smør': 'unbutter',
-  'fjern smoer': 'unbutter',
-  'ikke givet': 'mark',
-  givet: 'mark',
-};
-const TRUSTED = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
-const DEFAULT_REASON = 'Ingen morgenmad';
-const MAX_SWAPS = 50;
-
-/** Finder handlingen ud fra titlen, f.eks. "🥐 Tilmeld: Mette" -> "join". */
-function requestType(title) {
-  const match = String(title == null ? '' : title)
-    .toLowerCase()
-    .match(/^[^a-zæøå]*(tilmeld|afmeld|aflys|genåbn|genaabn|byt|smør|smoer|fjern smør|fjern smoer|ikke givet|givet)(?![a-zæøå])/);
-  return match ? TYPES[match[1]] : null;
-}
-
-/** Læser et issue-formular-body ("### Navn\n\nMette") til { navn: 'Mette' }. */
-function parseIssueForm(body) {
-  const sections = {};
-  let key = null;
-  for (const line of String(body == null ? '' : body).split(/\r?\n/)) {
-    const heading = line.match(/^###\s+(.*?)\s*$/);
-    if (heading) {
-      key = heading[1].toLowerCase();
-      sections[key] = [];
-    } else if (key) {
-      sections[key].push(line);
-    }
-  }
-  return Object.fromEntries(
-    Object.entries(sections).map(([name, lines]) => {
-      const value = lines.join('\n').trim();
-      return [name, value === '_No response_' ? '' : value];
-    }),
-  );
-}
-
-const field = (fields, prefix) => (Object.entries(fields).find(([name]) => name.startsWith(prefix)) || [])[1] || '';
-
-function cleanName(value) {
-  return String(value == null ? '' : value)
-    .replace(/[\u0000-\u001f<>`*_[\]#@\\|~]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, 40);
-}
-
-function cleanReason(value) {
-  return String(value == null ? '' : value)
-    .replace(/[\u0000-\u001f<>`@\\|]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, 80);
-}
-
-/** Accepterer 2026-10-16, 16-10-2026, 16.10.2026, 16/10/2026 og 16/10. */
-function parseDate(value, today) {
-  const text = String(value == null ? '' : value);
-  const pad = (n) => n.padStart(2, '0');
-  let match;
-  let iso = null;
-  if ((match = text.match(/(\d{4})-(\d{1,2})-(\d{1,2})/))) {
-    iso = `${match[1]}-${pad(match[2])}-${pad(match[3])}`;
-  } else if ((match = text.match(/(\d{1,2})[./-](\d{1,2})[./-](\d{4})/))) {
-    iso = `${match[3]}-${pad(match[2])}-${pad(match[1])}`;
-  } else if ((match = text.match(/(\d{1,2})[./](\d{1,2})(?![./\d])/))) {
-    const year = Number(today.slice(0, 4));
-    iso = `${year}-${pad(match[2])}-${pad(match[1])}`;
-    if (isValidDate(iso) && iso < today) iso = `${year + 1}-${pad(match[2])}-${pad(match[1])}`;
-  }
-  return iso && isValidDate(iso) ? iso : null;
-}
-
-/** Laver et issue om til en anmodning, eller null hvis det ikke er en. */
-function parseRequest(issue, today) {
-  const type = requestType(issue.title);
-  if (!type) return null;
-  const fields = parseIssueForm(issue.body);
-  const titleRest = String(issue.title).split(':').slice(1).join(':');
-  const [titleName, titleOther] = titleRest.split(/⇄|<->|\bmed\b/);
-  const rawDate = field(fields, 'fredag') || field(fields, 'dato') || titleRest;
-  return {
-    type,
-    name: cleanName(field(fields, 'navn') || (type === 'swap' ? titleName : titleRest)),
-    other: cleanName(field(fields, 'byt med') || titleOther),
-    date: parseDate(rawDate, today),
-    rawDate: cleanReason(rawDate),
-    reason: cleanReason(field(fields, 'grund')),
-    given: type === 'mark' ? !/^[^a-zæøå]*ikke/.test(String(issue.title).toLowerCase()) : null,
-  };
-}
-
-const sameName = (a, b) => a.toLowerCase() === b.toLowerCase();
-
-function checkFriday({ date, rawDate }, today) {
-  if (!date) throw new RequestError(`Jeg kunne ikke læse datoen "${rawDate}". Skriv den som ÅÅÅÅ-MM-DD.`);
-  if (!isFriday(date)) throw new RequestError(`${formatDate(date)} er ikke en fredag.`);
-  if (date < today) throw new RequestError(`${nice(date)} er allerede overstået.`);
-}
-const nice = (iso) => formatDate(iso, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-
-/**
- * Udfører en anmodning på (allerede settled) data.
- * Returnerer { data, message } eller kaster RequestError med en dansk forklaring.
- *
- * Rettigheder (via GitHub-issues):
- *   - Alle med en GitHub-konto kan tilmelde sig.
- *   - Man kan afmelde sig selv; ejere/collaborators kan afmelde alle.
- *   - Deltagere og ejere/collaborators kan aflyse og genåbne fredage.
- *   - Man kan bytte sin egen fredag; ejere/collaborators kan bytte alle.
- *   - Deltagere og ejere/collaborators kan tilføje og fjerne smør og markere om morgenmaden blev givet.
- * Med `trusted: true` (Google Sheet uden login) må alle det hele.
- */
-function applyRequest(data, request, { today, author = '', association = 'NONE', trusted: trustAll = false }) {
-  const trusted = trustAll || TRUSTED.has(association);
-  const isAuthor = (person) => Boolean(person.github && author && sameName(person.github, author));
-  const authorIsParticipant = data.participants.some(isAuthor);
-
-  switch (request.type) {
-    case 'join': {
-      const { name } = request;
-      if (!name) throw new RequestError('Jeg kunne ikke finde et navn i anmodningen.');
-      const existing = data.participants.find((p) => sameName(p.name, name));
-      if (existing) throw new RequestError(`**${existing.name}** står allerede på listen.`);
-      const person = { name, joined: today };
-      if (author && !authorIsParticipant) person.github = author;
-      // Den der senest har givet, har lige haft sin tur og står bagerst. Nye kommer foran dem,
-      // så den nye får næste tur i stedet for at den der lige har givet, skal give igen.
-      const people = data.participants;
-      const history = data.history || [];
-      const lastGiver = history.length ? history[history.length - 1].name : null;
-      const atBack = lastGiver && people.length && people[people.length - 1].name === lastGiver;
-      const next = {
-        ...data,
-        participants: atBack ? [...people.slice(0, -1), person, people[people.length - 1]] : [...people, person],
-      };
-      const first = nextDates(next, today).get(name);
-      return {
-        data: next,
-        message: `**${name}** er skrevet på listen – velkommen på bagerholdet! 🥐\n\nDin første tur er **${nice(first)}**.`,
-      };
-    }
-
-    case 'leave': {
-      const person = data.participants.find((p) => request.name && sameName(p.name, request.name));
-      if (!person) throw new RequestError(`Jeg kan ikke finde **${request.name || '(intet navn)'}** på listen.`);
-      if (!trusted && !isAuthor(person)) {
-        throw new RequestError(
-          `Kun ${person.name} selv eller en med skriveadgang til repoet kan afmelde ${person.name}.`,
-        );
-      }
-      return {
-        data: { ...data, participants: data.participants.filter((p) => p !== person) },
-        message: `**${person.name}** er taget af listen. Tak for morgenbrødet! 👋`,
-      };
-    }
-
-    case 'cancel':
-    case 'reopen': {
-      const { date } = request;
-      if (!trusted && !authorIsParticipant) {
-        throw new RequestError('Kun deltagere på listen eller personer med skriveadgang til repoet kan aflyse og genåbne fredage.');
-      }
-      checkFriday(request, today);
-
-      const isCancelled = data.cancelled.some((c) => c.date === date);
-      if (request.type === 'cancel') {
-        if (isCancelled) throw new RequestError(`${nice(date)} er allerede aflyst.`);
-        const before = upcoming(data, date, 1)[0];
-        const reason = request.reason || DEFAULT_REASON;
-        const next = {
-          ...data,
-          cancelled: [...data.cancelled, { date, reason }].sort((a, b) => a.date.localeCompare(b.date)),
-        };
-        let message = `Ingen morgenmad **${nice(date)}** (${reason}). 😴`;
-        if (before && before.person) {
-          const moved = nextDates(next, date).get(before.person.name);
-          message += `\n\n**${before.person.name}** rykker til ${formatDate(moved)}, og resten af listen rykker en uge med.`;
-        }
-        return { data: next, message };
-      }
-
-      if (!isCancelled) throw new RequestError(`${nice(date)} er ikke aflyst.`);
-      const next = { ...data, cancelled: data.cancelled.filter((c) => c.date !== date) };
-      const entry = upcoming(next, date, 1)[0];
-      return {
-        data: next,
-        message:
-          `${nice(date)} er genåbnet! 🎉` +
-          (entry && entry.person ? `\n\n**${entry.person.name}** står for morgenmaden, og listen rykker en uge tilbage.` : ''),
-      };
-    }
-
-    case 'swap': {
-      const find = (name) => data.participants.find((p) => name && sameName(p.name, name));
-      const a = find(request.name);
-      const b = find(request.other);
-      if (!a) throw new RequestError(`Jeg kan ikke finde **${request.name || '(intet navn)'}** på listen.`);
-      if (!b) throw new RequestError(`Jeg kan ikke finde **${request.other || '(intet navn)'}** på listen.`);
-      if (a === b) throw new RequestError('Man kan ikke bytte med sig selv. 🙂');
-      if (!trusted && !isAuthor(a) && !isAuthor(b)) {
-        throw new RequestError(`Kun ${a.name}, ${b.name} eller en med skriveadgang til repoet kan bytte deres fredage.`);
-      }
-
-      const dates = nextDates(data, today);
-      const aFrom = dates.get(a.name);
-      const bFrom = dates.get(b.name);
-      const participants = data.participants.map((p) => (p === a ? b : p === b ? a : p));
-      const swap = { date: today, a: a.name, b: b.name, aFrom, bFrom };
-      return {
-        data: { ...data, participants, swaps: [...(data.swaps || []), swap].slice(-MAX_SWAPS) },
-        message:
-          `**${a.name}** og **${b.name}** har byttet! 🔁\n\n` +
-          `${a.name} tager ${formatDate(bFrom)}, og ${b.name} tager ${formatDate(aFrom)}.`,
-      };
-    }
-
-    case 'gave': {
-      const person = data.participants.find((p) => request.name && sameName(p.name, request.name));
-      if (!person) throw new RequestError(`Jeg kan ikke finde **${request.name || '(intet navn)'}** på listen.`);
-      if (!trusted && !authorIsParticipant) {
-        throw new RequestError('Kun deltagere på listen eller personer med skriveadgang til repoet kan melde at nogen har givet.');
-      }
-      const { date } = request;
-      if (!date) throw new RequestError(`Jeg kunne ikke læse datoen "${request.rawDate}". Skriv den som ÅÅÅÅ-MM-DD.`);
-      if (!isFriday(date)) throw new RequestError(`${formatDate(date)} er ikke en fredag.`);
-      if (date > today) throw new RequestError('Det kan først meldes på selve fredagen.');
-
-      const entry = date >= data.anchor ? upcoming(data, date, 1)[0] : null;
-      if (entry && entry.date === date) {
-        if (entry.cancelled) throw new RequestError(`${nice(date)} er aflyst.`);
-        if (entry.person && entry.person.name === person.name) {
-          return applyRequest(data, { ...request, type: 'mark', given: true }, { today, author, association, trusted: trustAll });
-        }
-        if (entry.person) {
-          throw new RequestError(`**${entry.person.name}** stod på programmet ${nice(date)}. Brug Ja/Nej, eller byt først.`);
-        }
-      }
-
-      const history = data.history
-        .filter((h) => h.date !== date)
-        .concat({ date, name: person.name, given: true })
-        .sort((a, b) => a.date.localeCompare(b.date));
-      const others = data.participants.filter((p) => p !== person);
-      return {
-        data: { ...data, history, participants: [...others, person] },
-        message: `✅ **${person.name}** gav morgenmad ${nice(date)}. Tak! 🥐\n\n${person.name} er rykket bagerst i køen.`,
-      };
-    }
-
-    case 'mark': {
-      const { date } = request;
-      if (!trusted && !authorIsParticipant) {
-        throw new RequestError('Kun deltagere på listen eller personer med skriveadgang til repoet kan markere morgenmad.');
-      }
-      if (!date) throw new RequestError(`Jeg kunne ikke læse datoen "${request.rawDate}". Skriv den som ÅÅÅÅ-MM-DD.`);
-      if (!isFriday(date)) throw new RequestError(`${formatDate(date)} er ikke en fredag.`);
-      if (date > today) throw new RequestError('Det kan først markeres på selve fredagen.');
-      const given = typeof request.given === 'boolean' ? request.given : null;
-
-      let who;
-      let next;
-      const past = data.history.find((h) => h.date === date);
-      if (past && past.name) {
-        who = past.name;
-        next = {
-          ...data,
-          history: data.history.map((h) => {
-            if (h !== past) return h;
-            const copy = { ...h };
-            if (given === null) delete copy.given;
-            else copy.given = given;
-            return copy;
-          }),
-        };
-      } else {
-        const entry = date >= data.anchor ? upcoming(data, date, 1)[0] : null;
-        if (!entry || entry.date !== date || !entry.person) throw new RequestError('Der skulle ikke gives morgenmad den dag.');
-        who = entry.person.name;
-        const marks = (data.marks || []).filter((m) => m.date !== date);
-        if (given !== null) marks.push({ date, given });
-        next = { ...data, marks: marks.sort((a, b) => a.date.localeCompare(b.date)) };
-      }
-      return {
-        data: next,
-        message:
-          given === true
-            ? `✅ **${who}** gav morgenmad ${nice(date)}. Tak!`
-            : given === false
-              ? `❌ Der blev ikke givet morgenmad ${nice(date)}.`
-              : `Markeringen ${nice(date)} er fjernet.`,
-      };
-    }
-
-    case 'order': {
-      if (!trusted && !authorIsParticipant) {
-        throw new RequestError('Kun deltagere på listen eller personer med skriveadgang til repoet kan markere bestillinger.');
-      }
-      const { date } = request;
-      checkFriday(request, today);
-      const others = (data.ordered || []).filter((d) => d !== date);
-      const on = request.given !== false;
-      return {
-        data: { ...data, ordered: on ? [...others, date].sort() : others },
-        message: on ? `🛒 Morgenmaden til ${nice(date)} er bestilt ✅` : `Bestillingen til ${nice(date)} er fjernet.`,
-      };
-    }
-
-    case 'butterpast':
-    case 'unbutterpast': {
-      if (!trusted && !authorIsParticipant) {
-        throw new RequestError('Kun deltagere på listen eller personer med skriveadgang til repoet kan rette smørlisten.');
-      }
-      const past = data.butterPast || [];
-      const date = request.date || today;
-      if (date > today) throw new RequestError('Datoen ligger i fremtiden. Brug "Smør"-knappen på en fredag i stedet.');
-
-      if (request.type === 'butterpast') {
-        const person = data.participants.find((p) => request.name && sameName(p.name, request.name));
-        if (!person) throw new RequestError(`Jeg kan ikke finde **${request.name || '(intet navn)'}** på listen.`);
-        if (past.some((b) => b.name === person.name && b.date === date)) {
-          throw new RequestError(`**${person.name}** står allerede som havde smør med ${nice(date)}.`);
-        }
-        return {
-          data: { ...data, butterPast: [...past, { date, name: person.name }].sort((a, b) => a.date.localeCompare(b.date)) },
-          message: `🧈 **${person.name}** står nu som havde smør med ${nice(date)}.`,
-        };
-      }
-
-      const match = past.filter((b) => request.name && sameName(b.name, request.name) && (!request.date || b.date === request.date));
-      if (!match.length) throw new RequestError('Jeg kan ikke finde det smør på listen.');
-      const gone = match[match.length - 1];
-      return {
-        data: { ...data, butterPast: past.filter((b) => b !== gone) },
-        message: `Smørret ${nice(gone.date)} (${gone.name}) er fjernet fra listen. 🧈`,
-      };
-    }
-
-    case 'clearswaps': {
-      if (!trusted && !authorIsParticipant) {
-        throw new RequestError('Kun deltagere på listen eller personer med skriveadgang til repoet kan rydde byttelogen.');
-      }
-      if (!(data.swaps || []).length) throw new RequestError('Byttelogen er allerede tom.');
-      return { data: { ...data, swaps: [] }, message: 'Byttelogen er ryddet. 🧹' };
-    }
-
-    case 'butter':
-    case 'unbutter': {
-      const { date } = request;
-      if (!trusted && !authorIsParticipant) {
-        throw new RequestError('Kun deltagere på listen eller personer med skriveadgang til repoet kan tilføje og fjerne smør.');
-      }
-      // Smør kan også fjernes fra en fredag der er gået (hvis det blev tilføjet ved en fejl).
-      if (request.type === 'unbutter') {
-        if (!date) throw new RequestError(`Jeg kunne ikke læse datoen "${request.rawDate}". Skriv den som ÅÅÅÅ-MM-DD.`);
-        if (!isFriday(date)) throw new RequestError(`${formatDate(date)} er ikke en fredag.`);
-      } else {
-        checkFriday(request, today);
-      }
-      const plan = butterPlan(data);
-      const item = plan.find((p) => p.date === date);
-
-      if (request.type === 'unbutter') {
-        if (item) {
-          return {
-            data: { ...data, butter: data.butter.filter((b) => !item.requests.includes(b)) },
-            message: `Smørret ${nice(date)} er fjernet. 🧈`,
-          };
-        }
-        const past = data.history.find((h) => h.date === date && h.butter);
-        if (!past) throw new RequestError(`Der er ikke smør på ${nice(date)}.`);
-        return {
-          data: {
-            ...data,
-            history: data.history.map((h) => {
-              if (h !== past) return h;
-              const copy = { ...h };
-              delete copy.butter;
-              return copy;
-            }),
-          },
-          message: `Smørret ${nice(date)} (${past.butter}) er fjernet. 🧈`,
-        };
-      }
-
-      if (data.participants.length < 2) {
-        throw new RequestError('Der skal være mindst to på listen, før nogen kan tage smør med.');
-      }
-      if (data.cancelled.some((c) => c.date === date)) throw new RequestError(`${nice(date)} er aflyst.`);
-      if (item) throw new RequestError(`**${item.name}** tager allerede smør med ${nice(date)}.`);
-
-      const first = upcoming(data, date, 1)[0];
-      const breakfast = first && first.person ? first.person.name : null;
-      const last = lastButter({ ...data, butter: plan.map((p) => ({ date: p.date, name: p.name })) });
-      const name = pickButter(data, last, breakfast);
-      return {
-        data: { ...data, butter: [...data.butter, { date, name }].sort((a, b) => a.date.localeCompare(b.date)) },
-        message:
-          `🧈 **${name}** tager smør med ${nice(date)}.` +
-          (breakfast ? `\n\n${breakfast} står for morgenbrødet.` : ''),
-      };
-    }
-
-    default:
-      throw new RequestError('Ukendt handling.');
-  }
-}
-
 // ===== apps-script/server.js =====
 
 /* global SpreadsheetApp, LockService, ContentService, Utilities */
 /**
- * Google Apps Script-server til MorgenMadGlad.
+ * Google Apps Script-lager til MorgenMadGlad.
  *
- * Gemmer listen i et Google Sheet, så ingen behøver login.
- * Siden henter listen med GET og sender ændringer med POST:
- *   { action: 'join' | 'leave' | 'cancel' | 'reopen' | 'swap' | 'butter' | 'unbutter' | 'mark' | 'gave' | 'order' | 'butterpast' | 'unbutterpast' | 'clearswaps', name?, other?, date?, reason?, given? }
+ * Scriptet er en "dum" lagerplads: al logik (tilmeld, byt, smør osv.) ligger på siden. Scriptet kan kun
+ *   GET  → { ok, data, rev }                               hent listen og dens versionsnummer
+ *   POST → { action: 'save', rev, data, log? }              gem en ny udgave af listen
+ * Er `rev` ikke det nuværende versionsnummer, er listen ændret af en anden imens, og scriptet svarer
+ * { ok: false, conflict: true, data, rev }, så siden kan prøve igen på den nyeste liste.
+ *
+ * Nye funktioner på siden kræver derfor ikke ændringer her.
  *
  * Arkene oprettes automatisk:
- *   Data – listen som JSON i celle A1 (selve "databasen")
- *   Plan – de næste fredage med morgenmad og smør, så du kan se planen i arket
- *   Log  – hvem der gjorde hvad og hvornår (også bytninger)
+ *   Data – listen som JSON i celle A1 (selve "databasen"), versionsnummeret i C1
+ *   Plan – de næste fredage med morgenmad og smør, så du kan se planen i arket (kun til visning)
+ *   Log  – hvem der gjorde hvad og hvornår
  */
 
 // Arket listen gemmes i. Tom = det ark scriptet er oprettet fra (Udvidelser → Apps Script).
@@ -784,12 +361,13 @@ const SPREADSHEET_ID = '1NivBtDLpzeWHS6q6aGp6IQ8Gg42iskbLPOjtTi2L1Bw';
 const DATA_SHEET = 'Data';
 const PLAN_SHEET = 'Plan';
 const LOG_SHEET = 'Log';
-const ACTIONS = ['join', 'leave', 'cancel', 'reopen', 'swap', 'butter', 'unbutter', 'mark', 'gave', 'order', 'butterpast', 'unbutterpast', 'clearswaps'];
+const REV_CELL = 'C1';
+const MAX_JSON = 200000;
 const MAX_PARTICIPANTS = 60;
 
 function doGet() {
   try {
-    return respond_({ ok: true, data: readData_(today_()) });
+    return respond_({ ok: true, data: readData_(today_()), rev: readRev_() });
   } catch (error) {
     console.error(error);
     return respond_({ ok: false, error: error.message });
@@ -802,21 +380,42 @@ function doPost(e) {
     return respond_({ ok: false, error: 'Der er travlt i bageriet – prøv igen om lidt.' });
   }
   try {
-    const today = today_();
-    const current = settle(normalizeData(readData_(today), today), today);
-    try {
-      const request = toRequest_(parseBody_(e), today);
-      if (request.type === 'join' && current.participants.length >= MAX_PARTICIPANTS) {
-        throw new RequestError('Listen er fuld.');
-      }
-      const result = applyRequest(current, request, { today, trusted: true });
-      writeData_(result.data, today);
-      log_(request, result.message);
-      return respond_({ ok: true, data: result.data, message: result.message });
-    } catch (error) {
-      if (!(error instanceof RequestError)) throw error;
-      return respond_({ ok: false, error: error.message, data: current });
+    const body = parseBody_(e);
+    if (body.action !== 'save') return respond_({ ok: false, error: 'Ukendt handling.' });
+
+    const rev = readRev_();
+    if (Number(body.rev) !== rev) {
+      return respond_({
+        ok: false,
+        conflict: true,
+        error: 'Listen blev ændret af en anden imens.',
+        data: readData_(today_()),
+        rev: rev,
+      });
     }
+
+    const problem = validate_(body.data);
+    if (problem) return respond_({ ok: false, error: problem });
+
+    const today = today_();
+    const next = rev + 1;
+    const sheet = sheet_(DATA_SHEET);
+    sheet.getRange('A1').setValue(JSON.stringify(body.data));
+    sheet.getRange(REV_CELL).setValue(next);
+    sheet.getRange('A3').setValue('Listen gemmes som JSON i A1 (versionsnummer i C1). Brug helst hjemmesiden – eller ret forsigtigt.');
+
+    // Plan og log er kun til visning i arket – en fejl her må aldrig forhindre at listen gemmes.
+    try {
+      writePlan_(body.data, today);
+    } catch (error) {
+      console.error(error);
+    }
+    try {
+      log_(body.log);
+    } catch (error) {
+      console.error(error);
+    }
+    return respond_({ ok: true, rev: next });
   } catch (error) {
     console.error(error);
     return respond_({ ok: false, error: 'Noget gik galt i bageriet. Prøv igen.' });
@@ -833,17 +432,17 @@ function parseBody_(e) {
   }
 }
 
-function toRequest_(body, today) {
-  if (!ACTIONS.includes(body.action)) throw new RequestError('Ukendt handling.');
-  return {
-    type: body.action,
-    name: cleanName(body.name),
-    other: cleanName(body.other),
-    date: parseDate(body.date, today),
-    rawDate: cleanReason(body.date),
-    reason: cleanReason(body.reason),
-    given: body.given === true ? true : body.given === false ? false : null,
-  };
+/** Grov kontrol, så et fejlagtigt kald ikke ødelægger listen. Selve reglerne tjekkes på siden. */
+function validate_(data) {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return 'Ugyldig liste.';
+  if (!Array.isArray(data.participants) || data.participants.length > MAX_PARTICIPANTS) return 'Ugyldig eller for stor liste.';
+  for (let i = 0; i < data.participants.length; i++) {
+    const person = data.participants[i];
+    if (!person || typeof person.name !== 'string' || !person.name) return 'Ugyldig deltager.';
+  }
+  if (typeof data.anchor !== 'string') return 'Ugyldig startdato.';
+  if (JSON.stringify(data).length > MAX_JSON) return 'Listen er for stor.';
+  return '';
 }
 
 function today_() {
@@ -853,6 +452,10 @@ function today_() {
 function sheet_(name) {
   const spreadsheet = SPREADSHEET_ID ? SpreadsheetApp.openById(SPREADSHEET_ID) : SpreadsheetApp.getActiveSpreadsheet();
   return spreadsheet.getSheetByName(name) || spreadsheet.insertSheet(name);
+}
+
+function readRev_() {
+  return Number(sheet_(DATA_SHEET).getRange(REV_CELL).getValue()) || 0;
 }
 
 function readData_(today) {
@@ -865,32 +468,27 @@ function readData_(today) {
   }
 }
 
-function writeData_(data, today) {
-  const sheet = sheet_(DATA_SHEET);
-  sheet.getRange('A1').setValue(JSON.stringify(data));
-  sheet.getRange('A3').setValue('Listen gemmes som JSON i A1. Brug helst hjemmesiden – eller ret forsigtigt.');
-
+function writePlan_(raw, today) {
+  const data = normalizeData(raw, today);
   const butter = new Map(butterPlan(data).map((item) => [item.date, item.name]));
-  const marks = new Map((data.marks || []).map((m) => [m.date, m.given ? '✅ Givet' : '❌ Ikke givet']));
+  const marks = new Map(data.marks.map((m) => [m.date, m.given ? '✅ Givet' : '❌ Ikke givet']));
+  const ordered = new Set(data.ordered);
   const rows = upcoming(data, today, 12).map((entry) => [
     entry.date,
     entry.cancelled ? `Aflyst – ${entry.reason || 'ingen morgenmad'}` : entry.person ? entry.person.name : '',
     butter.get(entry.date) || '',
     marks.get(entry.date) || '',
+    ordered.has(entry.date) ? '🛒 Bestilt' : '',
   ]);
   const plan = sheet_(PLAN_SHEET);
   plan.clearContents();
-  plan.getRange(1, 1, rows.length + 1, 4).setValues([['Fredag', 'Morgenmad', 'Smør', 'Givet?'], ...rows]);
+  plan.getRange(1, 1, rows.length + 1, 5).setValues([['Fredag', 'Morgenmad', 'Smør', 'Givet?', 'Bestilt?'], ...rows]);
 }
 
-function log_(request, message) {
-  const what =
-    ['cancel', 'reopen', 'butter', 'unbutter', 'mark', 'order'].includes(request.type)
-      ? request.date
-      : request.type === 'swap'
-        ? `${request.name} ⇄ ${request.other}`
-        : request.name;
-  sheet_(LOG_SHEET).appendRow([new Date(), request.type, what || '', String(message).replace(/\*\*/g, '')]);
+function log_(entry) {
+  if (!entry || typeof entry !== 'object') return;
+  const clip = (value) => String(value == null ? '' : value).slice(0, 300);
+  sheet_(LOG_SHEET).appendRow([new Date(), clip(entry.type), clip(entry.what), clip(entry.message)]);
 }
 
 function respond_(payload) {
