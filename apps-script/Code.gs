@@ -706,15 +706,36 @@ function applyRequest(data, request, { today, author = '', association = 'NONE',
       if (!trusted && !authorIsParticipant) {
         throw new RequestError('Kun deltagere på listen eller personer med skriveadgang til repoet kan tilføje og fjerne smør.');
       }
-      checkFriday(request, today);
+      // Smør kan også fjernes fra en fredag der er gået (hvis det blev tilføjet ved en fejl).
+      if (request.type === 'unbutter') {
+        if (!date) throw new RequestError(`Jeg kunne ikke læse datoen "${request.rawDate}". Skriv den som ÅÅÅÅ-MM-DD.`);
+        if (!isFriday(date)) throw new RequestError(`${formatDate(date)} er ikke en fredag.`);
+      } else {
+        checkFriday(request, today);
+      }
       const plan = butterPlan(data);
       const item = plan.find((p) => p.date === date);
 
       if (request.type === 'unbutter') {
-        if (!item) throw new RequestError(`Der er ikke smør på ${nice(date)}.`);
+        if (item) {
+          return {
+            data: { ...data, butter: data.butter.filter((b) => !item.requests.includes(b)) },
+            message: `Smørret ${nice(date)} er fjernet. 🧈`,
+          };
+        }
+        const past = data.history.find((h) => h.date === date && h.butter);
+        if (!past) throw new RequestError(`Der er ikke smør på ${nice(date)}.`);
         return {
-          data: { ...data, butter: data.butter.filter((b) => !item.requests.includes(b)) },
-          message: `Smørret ${nice(date)} er fjernet. 🧈`,
+          data: {
+            ...data,
+            history: data.history.map((h) => {
+              if (h !== past) return h;
+              const copy = { ...h };
+              delete copy.butter;
+              return copy;
+            }),
+          },
+          message: `Smørret ${nice(date)} (${past.butter}) er fjernet. 🧈`,
         };
       }
 

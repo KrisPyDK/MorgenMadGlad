@@ -136,7 +136,7 @@
           <a class="btn btn--order" id="order-link" href="#" target="_blank" rel="noopener">
             <span class="btn--order__icon" aria-hidden="true">🛒</span> Bestil morgenbrød
           </a>
-          <button class="order-done" id="order-done" type="button" hidden>✅ Jeg har bestilt</button>
+          <button class="order-done" id="order-done" type="button" hidden title="Tryk her, når maden er bestilt, så de andre ved, at det ikke skal gøres mere">✅ Tryk her, når du har bestilt</button>
           <span class="order-pill" id="order-pill" hidden>
             ✅ Bestilt
             <button class="order-pill__undo" id="order-undo" type="button" title="Fjern markering" aria-label="Fjern bestilt-markering">×</button>
@@ -170,8 +170,8 @@
           <h2 id="join-title">Tilmeld dig</h2>
           <p class="muted">Du kommer bagerst i køen og får besked om, hvornår det er din tur.</p>
           <form class="join__form" id="join-form" novalidate>
-            <label class="sr-only" for="join-name">Dit navn</label>
-            <input class="input" id="join-name" name="navn" maxlength="40" autocomplete="name" placeholder="Dit navn, f.eks. Mette" required>
+            <label class="sr-only" for="join-name">Dine initialer</label>
+            <input class="input" id="join-name" name="navn" maxlength="40" autocomplete="name" placeholder="Skriv dine initialer, f.eks. ABC" required>
             <button class="btn btn--primary" type="submit">Tilmeld mig</button>
           </form>
           <p class="field-error" id="join-error" role="alert" hidden></p>

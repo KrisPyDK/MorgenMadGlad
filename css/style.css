@@ -1226,18 +1226,20 @@ svg { display: block; }
 
 .order-done {
   appearance: none;
-  border: 2px solid rgb(143 74 28 / .35);
+  border: 0;
   border-radius: 999px;
-  padding: 6px 14px;
-  background: rgb(255 255 255 / .75);
-  color: #5A2F10;
-  font: inherit;
-  font-weight: 800;
+  padding: 10px 18px;
+  background: var(--pistachio);
+  color: #fff;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 1.05rem;
+  box-shadow: 0 5px 0 #3F8B52;
   cursor: pointer;
-  transition: scale .35s var(--spring), rotate .35s var(--spring), background-color .2s;
+  transition: scale .35s var(--spring), rotate .35s var(--spring), translate .2s;
 }
-.order-done:hover { scale: 1.08; rotate: -2deg; background: #CDEBD3; border-color: var(--pistachio); }
-.order-done:active { scale: .93; }
+.order-done:hover { scale: 1.06; rotate: -2deg; }
+.order-done:active { scale: .95; translate: 0 4px; box-shadow: 0 1px 0 #3F8B52; }
 .order-done[hidden], .order-pill[hidden] { display: none; }
 .order-pill {
   display: inline-flex;

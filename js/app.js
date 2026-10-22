@@ -726,19 +726,20 @@ function renderButter() {
       avatar(item.name),
       h('strong', {}, item.name),
       future ? h('span', { class: 'tag tag--butter' }, relativeDays(item.date)) : null,
-      item.manual
-        ? h(
-            'button',
-            {
-              class: 'member__remove',
-              type: 'button',
-              title: 'Fjern fra listen',
-              'aria-label': `Fjern ${item.name} fra smørlisten`,
-              onclick: async () => report(await perform({ type: 'unbutterpast', name: item.name, date: item.date })),
-            },
-            '×',
-          )
-        : null,
+      h(
+        'button',
+        {
+          class: 'member__remove',
+          type: 'button',
+          title: 'Fjern fra listen',
+          'aria-label': `Fjern ${item.name} fra smørlisten`,
+          onclick: async () =>
+            item.manual
+              ? report(await perform({ type: 'unbutterpast', name: item.name, date: item.date }))
+              : removeButter(item),
+        },
+        '×',
+      ),
     );
 
   $('#butter-upcoming').replaceChildren(
@@ -837,7 +838,7 @@ async function join(event) {
   const request = { type: 'join', name: cleanName(input.value) };
   $('#join-error').hidden = true;
 
-  if (!request.name) return showJoinError('Skriv lige dit navn først 🙂');
+  if (!request.name) return showJoinError('Skriv lige dine initialer først 🙂');
   const problem = tryRequest(request).error;
   if (problem) return showJoinError(problem);
 
@@ -956,10 +957,10 @@ async function addButter(entry, event) {
 }
 
 async function removeButter(entry) {
-  const butter = state.butter.get(entry.date);
+  const name = state.butter.get(entry.date)?.name || entry.name;
   const confirmed = await confirmDialog({
     title: 'Fjern smør?',
-    text: [`Der skal alligevel ikke smør med ${longDate(entry.date)}`, butter?.name ? [' (', h('b', {}, butter.name), ')'] : '', '.'].flat(),
+    text: [`Der skal alligevel ikke smør med ${longDate(entry.date)}`, name ? [' (', h('b', {}, name), ')'] : '', '.'].flat(),
     ok: 'Fjern smør',
   });
   if (confirmed) report(await perform({ type: 'unbutter', date: entry.date }));

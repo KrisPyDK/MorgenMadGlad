@@ -313,3 +313,15 @@ test('byttelogen kan ryddes uden at ændre rækkefølgen', () => {
   assert.throws(() => applyRequest(cleared.data, { type: 'clearswaps' }, asOwner), /allerede tom/);
   assert.throws(() => applyRequest(swapped, { type: 'clearswaps' }, asStranger), /Kun deltagere/);
 });
+
+test('smør kan fjernes igen – også på en fredag der er gået', () => {
+  const settledLike = {
+    ...data,
+    history: [{ date: '2026-10-09', name: 'Carl', butter: 'Bo' }, { date: '2026-10-02', name: 'Anna' }],
+  };
+  const removed = applyRequest(settledLike, { type: 'unbutter', date: '2026-10-09' }, asOwner);
+  assert.deepEqual(removed.data.history[0], { date: '2026-10-09', name: 'Carl' });
+  assert.match(removed.message, /Bo\) er fjernet/);
+  assert.throws(() => applyRequest(settledLike, { type: 'unbutter', date: '2026-10-02' }, asOwner), /ikke smør/);
+  assert.throws(() => applyRequest(settledLike, { type: 'unbutter', date: '2026-10-08' }, asOwner), /ikke en fredag/);
+});
